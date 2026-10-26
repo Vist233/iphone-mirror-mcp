@@ -136,10 +136,10 @@ Validated on one Mac/iPhone pair; focus and cursor sampling runs about every 25 
 
 ## Acknowledgments and license
 
-The SkyLight event-record implementation draws on [phone-harness](https://github.com/ShawnPana/phone-harness), especially the layout in its `background.py`; its MIT notice is reproduced in [NOTICE](NOTICE). [yabai](https://github.com/koekeishiya/yabai) is an indirect reference for the make-key approach, through phone-harness.
+The SkyLight event-record implementation draws on [phone-harness](https://github.com/ShawnPana/phone-harness), especially the layout in its `background.py`; its MIT notice and license are reproduced at the end of [LICENSE](LICENSE). [yabai](https://github.com/koekeishiya/yabai) is an indirect reference for the make-key approach, through phone-harness.
 
 [mirroir-mcp](https://github.com/jfarcand/mirroir-mcp) and [GUIWeave](https://github.com/hyechow/GUIWeave) informed comparison and research. They are not runtime dependencies. This project does not launch them.
 
-Third-party sources and the full license text are in [NOTICE](NOTICE). This project uses the [MIT license](LICENSE).
+Third-party sources and the full license text are in [LICENSE](LICENSE).
 
 The Chinese README is the primary document. This English version follows it.

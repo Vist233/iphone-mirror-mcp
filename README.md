@@ -136,10 +136,10 @@ iPhone
 
 ## 致谢与许可证
 
-底层 SkyLight 事件记录实现参考了 [phone-harness](https://github.com/ShawnPana/phone-harness)，特别是其 `background.py` 中的记录布局；它的 MIT 版权与许可证全文在 [NOTICE](NOTICE)。[yabai](https://github.com/koekeishiya/yabai) 是 make-key 方法的间接参考，来源于 phone-harness 的引用。
+底层 SkyLight 事件记录实现参考了 [phone-harness](https://github.com/ShawnPana/phone-harness)，特别是其 `background.py` 中的记录布局；它的 MIT 版权与许可证全文附在 [LICENSE](LICENSE) 末尾。[yabai](https://github.com/koekeishiya/yabai) 是 make-key 方法的间接参考，来源于 phone-harness 的引用。
 
 [mirroir-mcp](https://github.com/jfarcand/mirroir-mcp) 和 [GUIWeave](https://github.com/hyechow/GUIWeave) 提供了对照与研究参考。它们不是运行依赖，本项目不会启动这些项目。
 
-第三方来源与许可证全文见 [NOTICE](NOTICE)。本项目采用 [MIT 许可证](LICENSE)。
+第三方来源与许可证全文见 [LICENSE](LICENSE)。
 
 中文为主文档，英文版根据中文同步维护。

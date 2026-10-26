@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from . import __version__
 from .presets import SCROLL_MAGNITUDES, SIGNED_SCROLL_DELTAS, DEFAULT_SCROLL_MAGNITUDE
 
 DRIVER = os.environ.get('MR_MIRRORCTL', '').split() or [sys.executable, '-m', 'iphone_mirror_mcp.driver']
@@ -178,7 +179,7 @@ def response(request):
     if method == 'initialize':
         version = params.get('protocolVersion')
         return dict(envelope,result={'protocolVersion':version if version in VERSIONS else VERSIONS[0],
-                                    'capabilities':{'tools':{}}, 'serverInfo':{'name':'iphone-mirror-local','version':'0.4.0'}})
+                                    'capabilities':{'tools':{}}, 'serverInfo':{'name':'iphone-mirror-local','version':__version__}})
     if method == 'ping':
         return dict(envelope,result={})
     if method == 'tools/list':
@@ -192,6 +193,9 @@ def response(request):
     return dict(envelope,error={'code':-32601,'message':'Method not found'})
 
 def main():
+    if sys.platform != 'darwin':
+        print('iphone-mirror-mcp requires macOS with iPhone Mirroring.', file=sys.stderr)
+        raise SystemExit(1)
     for line in sys.stdin:
         try:
             request = json.loads(line)

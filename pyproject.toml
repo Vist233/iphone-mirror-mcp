@@ -4,11 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "iphone-mirror-mcp"
-version = "0.4.0"
+dynamic = ["version"]
 description = "Local MCP server that reads and drives iPhone Mirroring on macOS"
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
+keywords = ["mcp", "model-context-protocol", "iphone", "macos", "automation"]
 classifiers = [
     "Environment :: MacOS X",
     "License :: OSI Approved :: MIT License",
@@ -20,6 +22,14 @@ dependencies = [
     "pyobjc-framework-Vision==12.2.2",
     "pyobjc-framework-ApplicationServices==12.2.2",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Vist233/iphone-mirror-mcp"
+Repository = "https://github.com/Vist233/iphone-mirror-mcp"
+Issues = "https://github.com/Vist233/iphone-mirror-mcp/issues"
+
+[tool.hatch.version]
+path = "src/iphone_mirror_mcp/__init__.py"
 
 [project.scripts]
 iphone-mirror-mcp = "iphone_mirror_mcp.server:main"

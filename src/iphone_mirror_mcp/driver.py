@@ -23,6 +23,10 @@ import Vision
 from Foundation import NSURL
 from .presets import SCROLL_MAGNITUDES
 
+USAGE = ('Usage: mirror-driver info | read PATH | capture PATH | home | spotlight | '
+         'app_switcher | tap X Y | text TEXT [replace] | type TEXT | key return | '
+         'scroll DELTA [horizontal]')
+
 SKY = ctypes.CDLL('/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight')
 AS = ctypes.CDLL('/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices')
 
@@ -296,6 +300,8 @@ def coordinate(value, size):
     return number
 
 def main(arguments):
+    if not arguments:
+        raise ValueError(USAGE)
     command, *args = arguments
     pid, window_id, bounds = target()
     before = focus_state()
@@ -428,6 +434,9 @@ def main(arguments):
     return result
 
 def cli():
+    if len(sys.argv) < 2:
+        print(USAGE, file=sys.stderr)
+        raise SystemExit(2)
     try:
         print(json.dumps(main(sys.argv[1:]),ensure_ascii=False))
     except Exception as error:

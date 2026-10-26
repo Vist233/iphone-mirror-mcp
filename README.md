@@ -1,26 +1,61 @@
-# iPhone Mirror MCP — experimental preview
+# iPhone Mirror MCP
 
-Control a paired iPhone through Apple's iPhone Mirroring from an MCP client. The driver runs on the Mac. It requires no model API, Codex dependency, phone-side runner, jailbreak or developer mode.
+[English](README.en.md)
 
-**Limited device validation: one Mac/iPhone pair.** The core tools have device evidence, and this revision integrates the measured `a1` background scroll route. Scrolling requires explicit opt-in and an uncovered point inside the mirror window on the current desktop. Other Macs, hidden windows and long unattended workflows remain unverified.
+让支持 MCP 的 AI 客户端，通过 Mac 上的「iPhone 镜像」操作你的 iPhone。
 
-## Capabilities
+提供读屏、点击、文字输入、主屏与 Spotlight 导航、App 切换器，以及上下和左右滚动接口。无需越狱、开发者模式或安装手机端程序。
 
-| Capability | Evidence and limits |
+项目在 Mac 本地运行，不绑定模型或客户端。可以接入 Pi、Codex 等支持 MCP stdio 的工具；已有 Pi 搭配 DeepSeek Flash 的实际调用记录。
+
+> 当前为实验预览版，仅在一组 Mac/iPhone 上进行过验证。上下滚动已有实测；左右滚动和 App 切换器已实现，仍待真机验收。滚动默认关闭，启用后要求镜像窗口在当前桌面有未被遮挡的区域。
+
+## 能做什么
+
+| 功能 | 当前状态 |
 | --- | --- |
-| Window capture and local OCR | Tested on one setup; no native iPhone UI tree |
-| Tap, Home, Spotlight and opening Chrome | Tested on selected system and browser screens |
-| English, digits, Chinese, emoji and replacement | Tested; emoji checked in screenshots |
-| Return for browser navigation | Tested on a public example page; may submit data in other contexts |
-| Pi + configured DeepSeek Flash provider | Actual MCP calls and text readback tested |
-| Background scroll (`a1`) | Measured bounded steps in both directions on Settings; off by default |
-| Long press, dragging and multi-touch | Not supported as verified features |
+| 截图和本地 OCR 识字 | 已验证；不提供 iPhone 原生控件树 |
+| 坐标点击、按文字点击 | 已有实测，需检查操作结果 |
+| 输入英文、数字、中文和 emoji | 已验证；emoji 曾通过截图核对 |
+| 替换输入框文字、显式回车 | 已验证；回车可能提交内容 |
+| 返回主屏、打开 Spotlight | 已验证 |
+| 上下滚动（a1） | 已有双向实测，默认关闭 |
+| 左右滚动、App 切换器 | 已实现，待真机验收 |
+| 长按、拖拽、多指手势 | 暂不支持 |
 
-Selected successful actions preserved sampled Mac foreground, keyboard focus and cursor position. Other trials contained changes. Sampling is not a guarantee of uninterrupted desktop use on every application or OS build. See [validation](docs/VALIDATION.md).
+部分成功操作在采样期间保持了 Mac 前台、键盘焦点和鼠标位置不变；其他试验出现过变化。因此，项目尚不能保证所有应用和系统版本下都不干扰电脑操作。详细范围见[验证记录](docs/VALIDATION.md)。
 
-## Setup
+## 它怎么工作
 
-Use a Mac that already supports iPhone Mirroring. Connect it manually and confirm the phone screen is visible. Keep the iPhone locked. The host needs Accessibility and screen recording permissions. Connection and authentication prompts require the user.
+```text
+AI / MCP 客户端
+    ↓ MCP stdio
+server.py              参数校验、设备锁、工具分发、操作后读屏
+    ↓
+mirror-driver          选择 Python 环境并启动驱动
+    ↓
+mirror_driver.py       截图、Vision OCR、点击、键盘和滚动事件
+    ↓
+Mac 上的 iPhone 镜像
+    ↓ 苹果负责连接与交互传输
+iPhone
+```
+
+驱动通过 Mac 操作镜像程序，不直接连接 iPhone 控制协议。读屏使用本地截图和 Apple Vision OCR。运行时不需要模型 API。
+
+## 使用前准备
+
+1. 使用支持「iPhone 镜像」的 Mac 和已配对的 iPhone。
+2. 手动连接镜像，确认手机画面可见。
+3. 保持 iPhone 锁屏。
+4. 为运行工具的宿主程序授予所需的辅助功能和屏幕录制权限。
+5. 使用滚动时，让镜像窗口在当前桌面保留未被遮挡的区域。
+
+连接、认证、Face ID 和其他需要用户介入的提示，由用户处理。一次只使用一个手机驱动。
+
+## 安装
+
+在项目目录中执行：
 
 ```sh
 python3 -m venv .venv
@@ -28,11 +63,13 @@ python3 -m venv .venv
 chmod +x mirror-driver
 ```
 
-The launcher uses `.venv/bin/python`, or the executable specified by `MIRROR_PYTHON`. It does not select a named pyenv environment. The protocol server uses only the Python standard library; the driver requires PyObjC. Fresh installation on another Mac remains unverified.
+MCP 服务器只使用 Python 标准库；驱动依赖 PyObjC，版本列在 [requirements.txt](requirements.txt)。
 
-## MCP configuration
+启动器默认使用项目的 `.venv/bin/python`。也可以通过 `MIRROR_PYTHON` 指定解释器。启动器不会自动选择某个 pyenv 环境。其他 Mac 上的全新安装仍待验证。
 
-Replace all paths with your checkout. This example explicitly enables experimental `a1` scrolling; omit `MIRROR_ENABLE_EXPERIMENTAL_INPUT` to leave scrolling disabled.
+## MCP 配置
+
+将以下路径替换为你的项目绝对路径。本例显式启用实验滚动；删除 `MIRROR_ENABLE_EXPERIMENTAL_INPUT` 后，滚动保持关闭。
 
 ```json
 {
@@ -49,50 +86,78 @@ Replace all paths with your checkout. This example explicitly enables experiment
 }
 ```
 
-For Pi, put the configuration in the project's `.pi/mcp.json` and inspect `pi mcp list --json`. Pi's built-in MCP extension must be enabled. With `--no-extensions`, explicitly include `--extension builtin:mcp`. Use only one phone driver at a time.
+不同客户端的配置入口可能不同，以上为通用配置示例。Pi 可将配置放在项目的 `.pi/mcp.json`，并用 `pi mcp list --json` 检查连接。Pi 需要启用内置 MCP 扩展；使用 `--no-extensions` 时，需显式加入 `--extension builtin:mcp`。
 
-## Tools
+## 工具
 
-| Tool | Arguments |
+| 工具 | 参数与用途 |
 | --- | --- |
-| `mirror_status` | None; report window, focus and configured scroll capability |
-| `mirror_observe` | Optional `image: true`; text OCR is the default |
-| `mirror_tap` | Normalized `x`, `y`, each in `[0,1)` |
-| `mirror_tap_text` | `text`; must match exactly one OCR item by substring |
-| `mirror_navigate` | `destination`: `home`, `spotlight`, or `app_switcher` (recent apps) |
-| `mirror_input` | `action: text` with `text`, optional `mode: unicode` (default) or `ascii`, optional `replace`; or `action: enter` alone |
-| `mirror_scroll` | Exactly one of `direction: up/down/left/right` or legacy `dy: -50/50` |
+| `mirror_status` | 无参数；读取窗口、焦点和滚动能力配置 |
+| `mirror_observe` | 默认返回 OCR；可选 `image: true` 同时返回截图 |
+| `mirror_tap` | `x`、`y` 为窗口归一化坐标，范围均为 `[0,1)` |
+| `mirror_tap_text` | `text` 按子串匹配，必须只命中一个 OCR 项 |
+| `mirror_navigate` | `destination`：`home`、`spotlight` 或 `app_switcher` |
+| `mirror_input` | `action: text` 配合 `text`；可选 `mode: unicode/ascii` 和 `replace`；或只传 `action: enter` |
+| `mirror_scroll` | 二选一：`direction: up/down/left/right` 或旧参数 `dy: -50/50` |
 
-Version 0.3.0 consolidates the five old navigation/input tools into `mirror_navigate` and `mirror_input`. Clients must refresh their tool list and update old calls. Text input never implicitly submits. Submitting requires a separate `mirror_input({"action":"enter"})` call.
+0.3.0 将原来的五个导航和输入工具合并为 `mirror_navigate` 与 `mirror_input`。升级后需刷新客户端工具列表，并修改旧工具调用。
 
-`direction` describes content movement: `up` is `dy: 50`, `down` is `dy: -50`. Left/right use the same records with the Shift modifier flag, without pressing a global Shift key. [Apple documents Shift+scroll for horizontal swipes and Command+2 for App Switcher](https://support.apple.com/en-us/120421). Their background injection is implemented but has not passed device acceptance; verify the returned screen and direction.
+文字输入默认使用 Unicode，支持中文和 emoji。`mode: ascii` 使用英文键盘布局的物理键码。输入前先聚焦目标输入框；`replace: true` 会替换当前输入框内容。每次最多输入 200 个字符，不接受控制字符，也不改变剪贴板。
 
-On the tested `a1` setup, positive `dy` moves content upward to reveal later items; negative moves content downward to reveal earlier items. The argument is a tested preset, not a guaranteed pixel distance or one full screen. Small steps may be needed to inspect a long list.
+文本输入不会自动提交。需要回车时，单独调用 `mirror_input`，参数为 `{"action":"enter"}`。回车可能提交搜索、消息或表单，只应在目标明确且用户授权后使用。
 
-Observe before each action and inspect the fresh observation returned afterward. `submission: submitted` means events were sent. `phone_effect_verified: false` means the client still needs to verify the phone result. No movement is ambiguous: a boundary, input failure or observation problem can cause it. Do not automatically repeat or reverse an uncertain action.
+### 滚动方向
 
-If an already-submitted action's next observation fails, the server preserves its submission report and returns `retry_action: false`. Observe again before deciding what to do. Driver errors and timeouts can also leave partial phone effects.
+`direction` 表示内容移动方向，不表示手指或滚轮方向：
 
-Typing is limited to 200 characters, rejects control characters, and does not implicitly press Return or change the clipboard. `replace: true` replaces the current field. Return may submit a message or form; use it only for an authorized submission.
+| 参数 | 含义 |
+| --- | --- |
+| `up` | 内容向上，显示后面的项目；等同于 `dy: 50` |
+| `down` | 内容向下，显示前面的项目；等同于 `dy: -50` |
+| `left` / `right` | 请求内容向左 / 向右；实际效果与方向待真机验收 |
 
-## Implementation and limits
+每次滚动是固定幅度的一小步，不保证移动 50 个像素，也不保证翻过一整屏。
 
-Capture and Vision OCR run locally. Taps use target-process SkyLight records. Keyboard input uses target-process events after preparing the mirror's internal activation and receiving-window state.
+左右滚动在事件上添加 Shift 标志，不会按下全局 Shift 键。App 切换器使用 Command＋2。这两种操作参考[苹果官方说明](https://support.apple.com/en-us/120421)，但本项目的后台事件路径仍待真机验收。
 
-`a1` scrolling posts two bare pixel-wheel records through `SLSPostEventRecord`, about 40ms apart, with the target point in each raw record. It does not prime internal activation, switch system foreground or warp the pointer. Posting stops if the sampled Mac foreground/keyboard focus or target coverage changes. Only `a1` is published; selecting another `MIRROR_SCROLL_SCHEME` is rejected.
+## 如何检查操作结果
 
-SkyLight functions and record layouts are private interfaces that can change between macOS versions. Input sampling runs at about 25ms intervals, not continuously. OCR can merge icons or misread emoji. A per-user file lock serializes copies of this MCP server but cannot coordinate other drivers, direct CLI calls or the user.
+每次操作前先读屏，操作后检查返回的新画面或 OCR。
 
-## Acknowledgments
+- `submission: submitted` 只表示事件已提交。
+- `phone_effect_verified: false` 表示仍需客户端确认手机上的结果。
+- 已提交操作后的读屏失败时，服务器保留提交记录，并返回 `retry_action: false`。
 
-The target-process SkyLight event-record implementation draws on [phone-harness](https://github.com/ShawnPana/phone-harness), especially its `background.py` event-record layout. Its MIT copyright notice is retained in [third_party/phone-harness-LICENSE](third_party/phone-harness-LICENSE). [yabai](https://github.com/koekeishiya/yabai) is an indirect reference for the make-key approach, via phone-harness.
+没有移动可能来自列表边界、输入失败或读屏问题。不要自动重复或反向执行结果不明的操作。驱动报错或超时，也可能已对手机产生部分影响。
 
-[mirroir-mcp](https://github.com/jfarcand/mirroir-mcp) and [GUIWeave](https://github.com/hyechow/GUIWeave) informed comparison and research. They are not runtime dependencies. This repository contains its own MCP server and local driver; it does not launch these projects. See [provenance details](THIRD_PARTY_NOTICES.md).
+## 实现与限制
 
-## Tests and provenance
+点击使用面向目标进程的 SkyLight 事件记录。键盘输入会先准备镜像程序内部的激活和接收窗口状态，再发送面向目标进程的事件。
+
+a1 滚动通过 `SLSPostEventRecord` 提交两条像素滚轮记录，间隔约 40 毫秒。每条记录包含目标点。上下滚动路径不准备内部激活，不主动切换系统前台或移动鼠标。发送期间若检测到前台、键盘焦点或窗口遮挡变化，驱动会停止继续提交。
+
+当前只发布 a1 路径；其他 `MIRROR_SCROLL_SCHEME` 值会被拒绝。隐藏、完全遮挡、最小化或位于其他桌面的镜像，尚未通过滚动验收。
+
+SkyLight 函数和事件记录布局属于私有接口，可能随 macOS 版本变化。焦点和鼠标约每 25 毫秒采样一次，不能覆盖所有瞬间。OCR 可能合并文字、误读图标或 emoji。
+
+每用户文件锁会串行处理本 MCP 的多个实例，但无法协调其他驱动、直接 CLI 调用或用户操作。跨机器、跨系统版本和长时间无人值守运行仍待验证。
+
+## 测试
 
 ```sh
 python3 -m unittest -v test_server.py
 ```
 
-The offline suite checks protocol behavior and driver guards without sending phone input. See [device validation](docs/VALIDATION.md). Experiments, screenshots, videos, model sessions, local environments and job-search data are not distributed. See [acknowledgments](THIRD_PARTY_NOTICES.md) and the [MIT license](LICENSE).
+当前有 28 项离线测试，检查协议、参数校验、工具分发和驱动保护逻辑，不向手机发送输入。真机证据和未验证项见[验证记录](docs/VALIDATION.md)。
+
+实验文件、截图、录像、模型会话、本地运行环境和私人岗位数据不随项目分发。
+
+## 致谢与许可证
+
+底层 SkyLight 事件记录实现参考了 [phone-harness](https://github.com/ShawnPana/phone-harness)，特别是其 `background.py` 中的记录布局。项目保留了它的 [MIT 版权与许可证](third_party/phone-harness-LICENSE)。[yabai](https://github.com/koekeishiya/yabai) 是 make-key 方法的间接参考，来源于 phone-harness 的引用。
+
+[mirroir-mcp](https://github.com/jfarcand/mirroir-mcp) 和 [GUIWeave](https://github.com/hyechow/GUIWeave) 提供了对照与研究参考。它们不是运行依赖，本项目不会启动这些项目。
+
+来源说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。本项目采用 [MIT 许可证](LICENSE)。
+
+中文为主文档，英文版根据中文同步维护。

@@ -1,4 +1,4 @@
-.venv/
+/.venv
 .pi/
 .env
 .env.*
@@ -8,3 +8,7 @@ __pycache__/
 *.jpg
 *.jsonl
 .DS_Store
+
+
+# Local experiments and private evidence are not part of the published package.
+experiments/

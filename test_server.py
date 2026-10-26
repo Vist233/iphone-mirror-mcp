@@ -6,8 +6,10 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import types
+import threading
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 import server
 
@@ -47,10 +49,21 @@ class ProtocolTests(unittest.TestCase):
                 self.assertTrue(result['result']['isError'])
                 driver.assert_not_called()
 
-    def test_zero_scroll_preserved(self):
+    def test_scroll_forwards_one_page_request(self):
         with patch.object(server,'run',return_value={'ok':True}) as driver, patch.object(server,'observe',return_value=([],[])):
-            server.call('mirror_scroll',{'dy':0})
-            driver.assert_called_once_with('scroll',0)
+            for dy in (-50,50):
+                with self.subTest(dy=dy):
+                    driver.reset_mock()
+                    server.call('mirror_scroll',{'dy':dy})
+                    driver.assert_called_once_with('scroll',dy)
+
+    def test_scroll_rejects_magnitude_outside_one_page(self):
+        with patch.object(server,'run') as driver:
+            for dy in (-51,51,-2000,2000,0,-1,1,-49,49):
+                with self.subTest(dy=dy):
+                    result=self.request('tools/call',{'name':'mirror_scroll','arguments':{'dy':dy}})
+                    self.assertTrue(result['result']['isError'])
+            driver.assert_not_called()
 
     def test_unverified_key_never_invokes_driver(self):
         with patch.object(server,'run') as driver:
@@ -119,6 +132,109 @@ class ProtocolTests(unittest.TestCase):
                 env={'PATH':'/usr/bin:/bin','MIRROR_PYTHON':str(runtime)},capture_output=True,text=True,timeout=5)
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual(result.stdout.splitlines(),[str(launcher.parent/'mirror_driver.py'),'text','中文 with spaces'])
+
+class ScrollDriverTests(unittest.TestCase):
+    """Run the actual driver functions with no macOS event side effects."""
+
+    def functions(self, names, namespace):
+        tree = ast.parse((Path(server.__file__).parent / 'mirror_driver.py').read_text())
+        nodes = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in names]
+        exec(compile(ast.Module(body=nodes, type_ignores=[]), 'driver-under-test', 'exec'), namespace)
+        return namespace
+
+    def driver_main(self, enabled=True):
+        baseline = {'front_pid': 10, 'keyboard_pid': 10, 'cursor': [20, 30]}
+        namespace = {
+            'target': lambda: (11, 12, {'X': 0, 'Y': 0, 'Width': 300, 'Height': 600}),
+            'focus_state': lambda: dict(baseline),
+            'Q': types.SimpleNamespace(CGPreflightPostEventAccess=lambda: True),
+            'tempfile': tempfile, 'Path': Path,
+            'read_text': lambda *args: [{'text': 'Settings'}],
+            'os': types.SimpleNamespace(environ={'MIRROR_ENABLE_EXPERIMENTAL_INPUT': '1'} if enabled else {}),
+            'internal_active': lambda pid: False,
+            'threading': types.SimpleNamespace(Event=threading.Event, Thread=Mock()),
+            'time': types.SimpleNamespace(sleep=lambda delay: None),
+            'prime': Mock(), 'record': Mock(),
+            'post_wheel_records': Mock(return_value=[0, 0]),
+            'MAX_WHEEL_MAGNITUDE': 50, 'DEFAULT_SCHEME': 'a1',
+            'WHEEL_RECORD_SETTLE_SECONDS': .65,
+        }
+        return self.functions({'main'}, namespace)
+
+    def test_a1_scroll_never_primes_or_changes_activation(self):
+        driver = self.driver_main()
+        result = driver['main'](['scroll', '50'])
+        driver['prime'].assert_not_called()
+        driver['record'].assert_not_called()
+        self.assertEqual(result['record_statuses'], [0, 0])
+        self.assertFalse(result['phone_effect_verified'])
+        self.assertEqual(driver['post_wheel_records'].call_args.args[2], 50)
+
+    def test_invalid_scroll_does_not_send_or_prime(self):
+        for value in ('0', '1', '-49', '51', '2000'):
+            with self.subTest(value=value):
+                driver = self.driver_main()
+                with self.assertRaises(ValueError):
+                    driver['main'](['scroll', value])
+                driver['prime'].assert_not_called()
+                driver['record'].assert_not_called()
+                driver['post_wheel_records'].assert_not_called()
+
+    def test_scroll_is_disabled_without_explicit_opt_in(self):
+        driver = self.driver_main(enabled=False)
+        with self.assertRaises(RuntimeError):
+            driver['main'](['scroll', '50'])
+        driver['post_wheel_records'].assert_not_called()
+
+    def test_unpublished_scheme_is_rejected_before_input(self):
+        driver = self.driver_main()
+        driver['os'].environ['MIRROR_SCROLL_SCHEME'] = 'c2'
+        with self.assertRaises(ValueError):
+            driver['main'](['scroll', '50'])
+        driver['prime'].assert_not_called()
+        driver['post_wheel_records'].assert_not_called()
+
+    def posting(self, current=None, covered=False):
+        baseline = {'front_pid': 10, 'keyboard_pid': 10}
+        point = (100, 200)
+        source = object()
+        events = [object(), object()]
+        namespace = {
+            'DEFAULT_SCHEME': 'a1',
+            'uncovered_point': Mock(side_effect=RuntimeError('covered')) if covered else Mock(return_value=point),
+            'Q': types.SimpleNamespace(CGEventSourceCreate=Mock(return_value=source)),
+            'WINDOW_SERVER_CONNECTION': lambda: 9,
+            'build_plain_wheel': Mock(return_value=events),
+            'focus_state': lambda: current if current is not None else baseline,
+            'EVENT_RECORD_POINTER': lambda event: event,
+            'objc': types.SimpleNamespace(pyobjc_id=lambda event: event),
+            'POST_WINDOW_RECORD': Mock(return_value=0),
+            'time': types.SimpleNamespace(sleep=lambda delay: None),
+            'WHEEL_RECORD_LENGTH': 0xf8, 'WHEEL_RECORD_INTERVAL_SECONDS': .04,
+        }
+        return self.functions({'post_wheel_records'}, namespace), baseline, source, point
+
+    def test_a1_posts_two_records_and_preserves_direction(self):
+        for delta in (-50, 50):
+            with self.subTest(delta=delta):
+                driver, baseline, source, point = self.posting()
+                result = driver['post_wheel_records'](12, {}, delta, baseline)
+                driver['build_plain_wheel'].assert_called_once_with(source, delta, point)
+                self.assertEqual(result, [0, 0])
+                self.assertEqual(driver['POST_WINDOW_RECORD'].call_count, 2)
+
+    def test_covered_mirror_posts_nothing(self):
+        driver, baseline, _, _ = self.posting(covered=True)
+        with self.assertRaises(RuntimeError):
+            driver['post_wheel_records'](12, {}, 50, baseline)
+        driver['POST_WINDOW_RECORD'].assert_not_called()
+
+    def test_focus_change_stops_before_posting(self):
+        driver, baseline, _, _ = self.posting(current={'front_pid': 99, 'keyboard_pid': 99})
+        with self.assertRaises(RuntimeError):
+            driver['post_wheel_records'](12, {}, 50, baseline)
+        driver['POST_WINDOW_RECORD'].assert_not_called()
+
 
 if __name__=='__main__':
     unittest.main()

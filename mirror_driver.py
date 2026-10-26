@@ -6,6 +6,7 @@ their presence and successful submission are not proof of a phone-side action.
 import ctypes
 import json
 import math
+import objc
 import os
 from pathlib import Path
 import struct
@@ -41,6 +42,23 @@ GET_PID = bind(AS, 'GetProcessPID', [ctypes.c_void_p, ctypes.c_void_p], ctypes.c
 GET_FRONT = bind(SKY, '_SLPSGetFrontProcess', [ctypes.c_void_p], ctypes.c_int32)
 GET_KEY = bind(SKY, 'SLPSGetKeyFocusProcess', [ctypes.c_void_p, ctypes.c_void_p], ctypes.c_int32)
 POST_RECORD = bind(SKY, 'SLPSPostEventRecordTo', [ctypes.c_void_p, ctypes.c_void_p], ctypes.c_int32)
+POST_WINDOW_RECORD = bind(SKY, 'SLSPostEventRecord', [ctypes.c_uint32, ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32], ctypes.c_int32)
+WINDOW_SERVER_CONNECTION = bind(SKY, 'SLSMainConnectionID', [], ctypes.c_uint32)
+EVENT_RECORD_POINTER = bind(SKY, 'SLEventRecordPointer', [ctypes.c_void_p], ctypes.c_void_p)
+
+# A posted wheel record is a fixed 0xf8-byte struct. WindowServer reads the
+# target global point from offset 0x10, which is how it performs the window
+# hit test that CGEventPostToPid skips.
+WHEEL_RECORD_LENGTH = 0xf8
+WHEEL_RECORD_LENGTH_OFFSET = 4
+WHEEL_RECORD_POINT_OFFSET = 0x10
+WHEEL_RECORD_COUNT = 2
+WHEEL_RECORD_INTERVAL_SECONDS = 0.04
+WHEEL_RECORD_SETTLE_SECONDS = 0.65
+
+# Only +/-50 was repeatedly measured. Treat each request as a bounded step;
+# do not infer a proportional distance or a magnitude ceiling from that study.
+MAX_WHEEL_MAGNITUDE = 50
 
 def target():
     apps = AppKit.NSRunningApplication.runningApplicationsWithBundleIdentifier_('com.apple.ScreenContinuity')
@@ -167,6 +185,85 @@ def type_unicode(pid, text):
             Q.CGEventPostToPid(pid,event)
             time.sleep(.035)
 
+def uncovered_point(window_id, bounds):
+    """Return a point inside the mirror that no other window covers.
+
+    WindowServer routes a posted wheel record by the point inside it, so an
+    occluded mirror has nowhere to deliver. Refusing here is safer than
+    posting at a point that belongs to some other app.
+    """
+    onscreen = Q.CGWindowListCopyWindowInfo(Q.kCGWindowListOptionOnScreenOnly, 0)
+    for fraction in (0.5, 0.4, 0.6):
+        point = (bounds['X'] + bounds['Width'] * 0.5,
+                 bounds['Y'] + bounds['Height'] * fraction)
+        for window in onscreen:
+            rect = window['kCGWindowBounds']
+            if not (window.get('kCGWindowLayer') == 0
+                    and rect['X'] <= point[0] < rect['X'] + rect['Width']
+                    and rect['Y'] <= point[1] < rect['Y'] + rect['Height']):
+                continue
+            if window['kCGWindowNumber'] == window_id:
+                return point
+            break
+    raise RuntimeError('The mirror is covered by another window; no scroll sent. '
+                       'Bring the mirror to an uncovered part of the desktop and retry.')
+
+
+DEFAULT_SCHEME = 'a1'
+
+
+def build_plain_wheel(source, dy, point):
+    return [wheel_record(source, dy, point) for _ in range(WHEEL_RECORD_COUNT)]
+
+
+def wheel_record(source, delta, point):
+    """Build one pixel-wheel record aimed at a point inside the mirror.
+
+    The returned event owns the record's memory, so the caller must keep it
+    referenced until after the record has been posted.
+    """
+    event = Q.CGEventCreateScrollWheelEvent(source, Q.kCGScrollEventUnitPixel, 1, delta)
+    if event is None:
+        raise RuntimeError('Scroll event creation failed.')
+    record = EVENT_RECORD_POINTER(objc.pyobjc_id(event))
+    if not record:
+        raise RuntimeError('Scroll event produced no record.')
+    length = struct.unpack_from('<I', (ctypes.c_uint8*WHEEL_RECORD_LENGTH).from_address(record),
+                                WHEEL_RECORD_LENGTH_OFFSET)[0]
+    if length != WHEEL_RECORD_LENGTH:
+        raise RuntimeError(f'Unexpected wheel record layout: {length:#x}.')
+    struct.pack_into('<dd', (ctypes.c_uint8*WHEEL_RECORD_LENGTH).from_address(record),
+                     WHEEL_RECORD_POINT_OFFSET, *point)
+    return event
+
+
+def post_wheel_records(window_id, bounds, dy, before, scheme_name=DEFAULT_SCHEME):
+    """Post the scroll records, aborting if Mac focus or coverage changes.
+
+    Returns the per-record WindowServer status codes.
+    """
+    if scheme_name != DEFAULT_SCHEME:
+        raise ValueError('Only the measured a1 scroll scheme is published.')
+    point = uncovered_point(window_id, bounds)
+    source = Q.CGEventSourceCreate(1)
+    connection = WINDOW_SERVER_CONNECTION()
+    events = build_plain_wheel(source, dy, point)
+    statuses = []
+    for event in events:
+        current = focus_state()
+        if any(current[key] != before[key] for key in ('front_pid', 'keyboard_pid')):
+            raise RuntimeError('Mac focus changed; scroll stopped before posting.')
+        if uncovered_point(window_id, bounds) != point:
+            raise RuntimeError('Mirror coverage changed; scroll stopped before posting.')
+        record = EVENT_RECORD_POINTER(objc.pyobjc_id(event))
+        status = POST_WINDOW_RECORD(connection, record, WHEEL_RECORD_LENGTH, 0)
+        statuses.append(status)
+        if status:
+            raise RuntimeError(f'WindowServer rejected the scroll record: {status}.')
+        time.sleep(WHEEL_RECORD_INTERVAL_SECONDS)
+    return statuses
+
+
 def capture(window_id, path):
     subprocess.run(['/usr/sbin/screencapture', '-l', str(window_id), '-x', '-o', '-t', 'png', path], check=True, timeout=10, capture_output=True)
     if Path(path).stat().st_size < 100:
@@ -206,7 +303,7 @@ def main(arguments):
                 'capabilities':{'capture':True, 'ocr':True, 'tap':'partial_device_verification',
                                 'ascii_type':'enabled_physical_keys_english_layout', 'unicode_type':True,
                                 'navigation_keys':['return','enter'],
-                                'scroll':'disabled_pending_device_verification'}}
+                                'scroll':('experimental_a1_enabled' if os.environ.get('MIRROR_ENABLE_EXPERIMENTAL_INPUT') == '1' else 'disabled_by_default')}}
     if command in ('capture', 'read'):
         path = args[0]
         if command == 'read':
@@ -230,6 +327,14 @@ def main(arguments):
         raise ValueError('Unsupported physical key. Use the Unicode text command for non-ASCII text.')
     if command == 'text' and (len(args[0])>200 or any(ord(c)<32 or ord(c)==127 for c in args[0])):
         raise ValueError('Text must be <=200 characters without control characters; no implicit Return/submit.')
+    if command == 'scroll':
+        delta = int(args[0])
+        if delta not in (-MAX_WHEEL_MAGNITUDE, MAX_WHEEL_MAGNITUDE):
+            raise ValueError('Scroll dy must be -50 or 50; only these steps were measured.')
+        scheme_name = os.environ.get('MIRROR_SCROLL_SCHEME', DEFAULT_SCHEME)
+        if scheme_name != DEFAULT_SCHEME:
+            raise ValueError('Only MIRROR_SCROLL_SCHEME=a1 is published; other schemes remain local research.')
+    needs_priming = command not in ('home', 'spotlight', 'scroll')
     was_active = internal_active(pid)
     samples = [before]
     stop_monitor = threading.Event()
@@ -242,7 +347,7 @@ def main(arguments):
     watcher = threading.Thread(target=monitor,daemon=True)
     watcher.start()
     try:
-        if command not in ('home', 'spotlight'):
+        if needs_priming:
             prime(pid, window_id)
             primed = focus_state()
             if any(primed[key] != before[key] for key in ('front_pid','keyboard_pid')):
@@ -288,44 +393,31 @@ def main(arguments):
                 raise ValueError('Unsupported key or modifier.')
             chord(pid, window_id, code, args[1:])
         elif command == 'scroll':
-            delta = int(args[0])
-            if abs(delta) > 2000:
-                raise ValueError('Scroll magnitude must be <=2000.')
-            location=(bounds['X']+bounds['Width']/2,bounds['Y']+bounds['Height']/2)
-            routing=[(Q.kCGEventTargetUnixProcessID,pid),(51,window_id),
-                     (Q.kCGMouseEventWindowUnderMousePointer,window_id),
-                     (Q.kCGMouseEventWindowUnderMousePointerThatCanHandleThisEvent,window_id)]
-            moved=Q.CGEventCreateMouseEvent(None,Q.kCGEventMouseMoved,location,0)
-            for field,value in routing:
-                Q.CGEventSetIntegerValueField(moved,field,value)
-            Q.CGEventPostToPid(pid,moved)
-            time.sleep(.05)
-            for phase, amount in [(Q.kCGScrollPhaseMayBegin,0),(Q.kCGScrollPhaseBegan,delta),
-                                  (Q.kCGScrollPhaseChanged,delta),(Q.kCGScrollPhaseEnded,0)]:
-                event = Q.CGEventCreateScrollWheelEvent(None, Q.kCGScrollEventUnitPixel, 1, amount)
-                Q.CGEventSetLocation(event,location)
-                Q.CGEventSetIntegerValueField(event,Q.kCGScrollWheelEventIsContinuous,1)
-                Q.CGEventSetIntegerValueField(event,Q.kCGScrollWheelEventScrollPhase,phase)
-                for field,value in routing:
-                    Q.CGEventSetIntegerValueField(event,field,value)
-                Q.CGEventPostToPid(pid,event)
-                time.sleep(0.06)
+            statuses = post_wheel_records(window_id, bounds, delta, before, scheme_name)
+            time.sleep(WHEEL_RECORD_SETTLE_SECONDS)
         else:
             raise ValueError('Unsupported command; no foreground fallback.')
         time.sleep(0.2)
     finally:
         try:
-            if not was_active and command not in ('home', 'spotlight'):
+            if not was_active and needs_priming:
                 record(pid, window_id, 0x0d, state=2)
         finally:
             stop_monitor.set()
             watcher.join(timeout=2)
     after = focus_state()
     samples.append(after)
-    return {'ok':True, 'submission':'submitted', 'phone_effect_verified':False, 'before':before, 'after':after,
+    result = {'ok':True, 'submission':'submitted', 'phone_effect_verified':False, 'before':before, 'after':after,
             'sample_count':len(samples),
             'focus_unchanged':all(all(sample.get(key)==before[key] for key in ('front_pid','keyboard_pid')) for sample in samples),
             'cursor_same_at_samples':all(sample.get('cursor')==before['cursor'] for sample in samples)}
+    if command == 'scroll':
+        result['record_statuses'] = statuses
+        result['interpretation'] = (
+            'Event submission is not proof of scrolling. No movement can mean a list '
+            'boundary, an input failure, or an observation problem. Inspect the '
+            'fresh screen before deciding on another action; do not retry automatically.')
+    return result
 
 if __name__ == '__main__':
     try:

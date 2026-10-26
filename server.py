@@ -50,8 +50,8 @@ TOOLS = [
          {'text':{'type':'string','maxLength':200}, 'replace':{'type':'boolean'}}, ['text']),
     tool('mirror_key', 'Send one navigation/edit key to the focused phone field. Return/Enter may submit a search or message: use only when the user authorized that action and the target page is verified.',
          {'key':{'type':'string','enum':['return','enter']}}, ['key']),
-    tool('mirror_scroll', 'Experimental scroll; disabled by default until phone-side and noninterference checks pass.',
-         {'dy':{'type':'integer','minimum':-2000,'maximum':2000}}, ['dy']),
+    tool('mirror_scroll', 'Experimental a1 bounded scroll step; disabled unless MIRROR_ENABLE_EXPERIMENTAL_INPUT=1. Negative dy moves toward earlier items, positive toward later items on the tested setup. Requires an uncovered mirror point. Inspect the returned observation; no movement is ambiguous and must not trigger an automatic retry.',
+         {'dy':{'type':'integer','enum':[-50,50]}}, ['dy']),
 ]
 
 def run(*arguments):
@@ -162,7 +162,7 @@ def response(request):
     if method == 'initialize':
         version = params.get('protocolVersion')
         return dict(envelope,result={'protocolVersion':version if version in VERSIONS else VERSIONS[0],
-                                    'capabilities':{'tools':{}}, 'serverInfo':{'name':'iphone-mirror-local','version':'0.2.0'}})
+                                    'capabilities':{'tools':{}}, 'serverInfo':{'name':'iphone-mirror-local','version':'0.2.1'}})
     if method == 'ping':
         return dict(envelope,result={})
     if method == 'tools/list':

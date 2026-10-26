@@ -1,31 +1,26 @@
 # iPhone Mirror MCP — experimental preview
 
-Control a paired iPhone through Apple's iPhone Mirroring from an MCP client. The driver runs on the Mac. No model API or Codex dependency is required.
+Control a paired iPhone through Apple's iPhone Mirroring from an MCP client. The driver runs on the Mac. It requires no model API, Codex dependency, phone-side runner, jailbreak or developer mode.
 
-**This is a preview with limited device validation. Background scrolling has produced repeatable sequence-level movement in a local research probe, but remains intermittent and is disabled by default in the MCP driver.** Several tested actions preserved the sampled Mac foreground, keyboard focus and cursor position. This does not guarantee uninterrupted desktop use on every OS, application or task.
+**Limited device validation: one Mac/iPhone pair.** The core tools have device evidence, and this revision integrates the measured `a1` background scroll route. Scrolling requires explicit opt-in and an uncovered point inside the mirror window on the current desktop. Other Macs, hidden windows and long unattended workflows remain unverified.
 
-## Status
+## Capabilities
 
-| Capability | Evidence |
+| Capability | Evidence and limits |
 | --- | --- |
-| Window capture and local OCR | Tested on one Mac/iPhone setup |
-| Tap, Home, Spotlight, opening Chrome | Tested on selected system and browser screens |
-| English, digits, Chinese, emoji and text replacement | Tested; emoji checked in screenshots |
-| Return for browser navigation | Tested on a public example page |
-| Pi + configured DeepSeek Flash provider | Real MCP calls and text readback tested |
-| Background scroll | Research probe produced movement in two sequences; intermittent, not integrated as a supported MCP route; disabled by default |
-| Long press, drag, multi-touch, arbitrary apps | Not supported as verified features |
-| Other Macs and long unattended workflows | Not validated |
+| Window capture and local OCR | Tested on one setup; no native iPhone UI tree |
+| Tap, Home, Spotlight and opening Chrome | Tested on selected system and browser screens |
+| English, digits, Chinese, emoji and replacement | Tested; emoji checked in screenshots |
+| Return for browser navigation | Tested on a public example page; may submit data in other contexts |
+| Pi + configured DeepSeek Flash provider | Actual MCP calls and text readback tested |
+| Background scroll (`a1`) | Measured bounded steps in both directions on Settings; off by default |
+| Long press, dragging and multi-touch | Not supported as verified features |
 
-Device evidence was collected on 2026-10-24 with macOS 27.0.1 and iPhone Mirroring 2.0. Protocol tests can run without a phone. See [validation](docs/VALIDATION.md) for the distinction.
-
-On 2026-10-26, this prepared preview also passed a core device regression: Settings navigation, three text replacements, Home/Spotlight, disconnect refusal and submission reporting after an injected observation failure. This does not validate scrolling stability or other Macs. Later that day, a separate scroll probe produced persistent list displacement in 5 of 27 controlled actions, including 2 with unchanged focus and cursor samples. Identical parameters also failed. See [scroll research](docs/SCROLL_RESEARCH.md).
+Selected successful actions preserved sampled Mac foreground, keyboard focus and cursor position. Other trials contained changes. Sampling is not a guarantee of uninterrupted desktop use on every application or OS build. See [validation](docs/VALIDATION.md).
 
 ## Setup
 
-Use a Mac that already supports iPhone Mirroring with your iPhone. Connect the mirror manually and confirm the phone screen is visible. Keep the iPhone locked while using Apple's mirror. The host that runs this driver needs the relevant Accessibility and screen recording permissions. Connection and authentication prompts require the user.
-
-Create a dedicated environment in the repository:
+Use a Mac that already supports iPhone Mirroring. Connect it manually and confirm the phone screen is visible. Keep the iPhone locked. The host needs Accessibility and screen recording permissions. Connection and authentication prompts require the user.
 
 ```sh
 python3 -m venv .venv
@@ -33,11 +28,11 @@ python3 -m venv .venv
 chmod +x mirror-driver
 ```
 
-The launcher uses `.venv/bin/python`, or the executable path in `MIRROR_PYTHON`. It does not select a named pyenv environment. The protocol server itself uses only the Python standard library; the driver requires PyObjC. Installation on a second Mac remains unverified.
+The launcher uses `.venv/bin/python`, or the executable specified by `MIRROR_PYTHON`. It does not select a named pyenv environment. The protocol server uses only the Python standard library; the driver requires PyObjC. Fresh installation on another Mac remains unverified.
 
 ## MCP configuration
 
-Replace the paths with your checkout and Python interpreter:
+Replace all paths with your checkout. This example explicitly enables experimental `a1` scrolling; omit `MIRROR_ENABLE_EXPERIMENTAL_INPUT` to leave scrolling disabled.
 
 ```json
 {
@@ -46,50 +41,51 @@ Replace the paths with your checkout and Python interpreter:
       "command": "/absolute/path/iphone-mirror-mcp/.venv/bin/python",
       "args": ["/absolute/path/iphone-mirror-mcp/server.py"],
       "env": {
-        "MIRROR_PYTHON": "/absolute/path/iphone-mirror-mcp/.venv/bin/python"
+        "MIRROR_PYTHON": "/absolute/path/iphone-mirror-mcp/.venv/bin/python",
+        "MIRROR_ENABLE_EXPERIMENTAL_INPUT": "1"
       }
     }
   }
 }
 ```
 
-For Pi, place this configuration in the project's `.pi/mcp.json` and inspect `pi mcp list --json`. Pi's built-in MCP extension must be enabled. If using `--no-extensions`, explicitly include `--extension builtin:mcp`. Avoid running another phone driver at the same time.
+For Pi, put the configuration in the project's `.pi/mcp.json` and inspect `pi mcp list --json`. Pi's built-in MCP extension must be enabled. With `--no-extensions`, explicitly include `--extension builtin:mcp`. Use only one phone driver at a time.
 
 ## Tools
 
 | Tool | Arguments |
 | --- | --- |
-| `mirror_status` | None; read window and focus information |
-| `mirror_observe` | Optional `image: true`; OCR is the default |
-| `mirror_tap` | `x`, `y`: normalized window coordinates, each in `[0,1)` |
-| `mirror_tap_text` | `text`: must match exactly one OCR item by substring |
+| `mirror_status` | None; report window, focus and configured scroll capability |
+| `mirror_observe` | Optional `image: true`; text OCR is the default |
+| `mirror_tap` | Normalized `x`, `y`, each in `[0,1)` |
+| `mirror_tap_text` | `text`; must match exactly one OCR item by substring |
 | `mirror_home` | None |
 | `mirror_spotlight` | None |
 | `mirror_type_ascii` | `text`, optional `replace`; physical English-layout keys |
 | `mirror_type` | Unicode `text`, optional `replace` |
 | `mirror_key` | `key`: `return` or `enter` |
-| `mirror_scroll` | Experimental `dy`; rejected by the driver by default |
+| `mirror_scroll` | `dy`: exactly `-50` or `50`; one bounded measured step |
 
-Observe the screen before each action. Inspect the fresh observation after it. `submission: submitted` means the event was sent, while `phone_effect_verified: false` means the client must check the phone result.
+On the tested `a1` setup, positive `dy` moves content upward to reveal later items; negative moves content downward to reveal earlier items. The argument is a tested preset, not a guaranteed pixel distance or one full screen. Small steps may be needed to inspect a long list.
 
-If an action was submitted but its next observation fails, the server preserves the submission report and returns `retry_action: false`. Observe again before deciding whether to repeat the action. A timeout or driver failure can also leave the phone effect uncertain; an error alone is not permission to retry an action that could submit or delete data.
+Observe before each action and inspect the fresh observation returned afterward. `submission: submitted` means events were sent. `phone_effect_verified: false` means the client still needs to verify the phone result. No movement is ambiguous: a boundary, input failure or observation problem can cause it. Do not automatically repeat or reverse an uncertain action.
 
-Typing is limited to 200 characters and rejects control characters. It does not implicitly press Return or change the clipboard. `replace: true` replaces the current field, so verify the field first. Return may submit a message or form; use it only for a user-authorized submission.
+If an already-submitted action's next observation fails, the server preserves its submission report and returns `retry_action: false`. Observe again before deciding what to do. Driver errors and timeouts can also leave partial phone effects.
+
+Typing is limited to 200 characters, rejects control characters, and does not implicitly press Return or change the clipboard. `replace: true` replaces the current field. Return may submit a message or form; use it only for an authorized submission.
 
 ## Implementation and limits
 
-The driver captures the mirror window and runs Apple Vision OCR locally. Pointing uses target-process SkyLight records. Keyboard input uses target-process events after preparing the mirror's internal activation and receiving-window state. The default path contains no system foreground-switch or pointer-warp fallback.
+Capture and Vision OCR run locally. Taps use target-process SkyLight records. Keyboard input uses target-process events after preparing the mirror's internal activation and receiving-window state.
 
-SkyLight entry points and event layouts are private interfaces. They can change between macOS releases. Focus and cursor measurements occur at 25ms intervals during input. They describe sample times, not every instant. OCR can merge icons with text or misread emoji. There is no native iPhone accessibility tree in this implementation.
+`a1` scrolling posts two bare pixel-wheel records through `SLSPostEventRecord`, about 40ms apart, with the target point in each raw record. It does not prime internal activation, switch system foreground or warp the pointer. Posting stops if the sampled Mac foreground/keyboard focus or target coverage changes. Only `a1` is published; selecting another `MIRROR_SCROLL_SCHEME` is rejected.
 
-A per-user file lock serializes transactions between copies of this server. It does not coordinate other drivers, the user, or direct CLI calls. No phone-side helper, developer mode, jailbreak or system protection changes were used for the recorded device tests.
+SkyLight functions and record layouts are private interfaces that can change between macOS versions. Input sampling runs at about 25ms intervals, not continuously. OCR can merge icons or misread emoji. A per-user file lock serializes copies of this MCP server but cannot coordinate other drivers, direct CLI calls or the user.
 
-`MIRROR_ENABLE_EXPERIMENTAL_INPUT=1` enables research routes in the driver. These routes are unverified and are not part of the preview's usable capability claim. In particular, this flag does not select the newly successful `SLSPostEventRecord` research probe: that probe has not replaced the packaged MCP scroll driver. They never automatically fall back to foreground input.
-
-## Test and contribute
+## Tests and provenance
 
 ```sh
 python3 -m unittest -v test_server.py
 ```
 
-See [the validation and release gates](docs/VALIDATION.md). Keep screenshots, local client configurations, model sessions and credentials out of contributions. See [acknowledgments](THIRD_PARTY_NOTICES.md). Distributed under the [MIT license](LICENSE).
+The offline suite checks protocol behavior and driver guards without sending phone input. See [device validation](docs/VALIDATION.md). Experiments, screenshots, videos, model sessions, local environments and job-search data are not distributed. See [acknowledgments](THIRD_PARTY_NOTICES.md) and the [MIT license](LICENSE).

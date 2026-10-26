@@ -12,3 +12,7 @@ __pycache__/
 
 # Local experiments and private evidence are not part of the published package.
 experiments/
+
+# Kept on this machine only; not published.
+test_server.py
+docs/

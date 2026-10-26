@@ -2,266 +2,138 @@
 
 [中文](README.md)
 
-Let an AI client that supports MCP operate your iPhone through Apple's iPhone Mirroring on a Mac.
+**iPhone Mirror MCP** is a local MCP (Model Context Protocol) server that lets MCP-capable AI clients such as Claude Code, Codex and Pi read and operate an iPhone screen through macOS iPhone Mirroring. There is a real call record of Pi with DeepSeek Flash driving it.
 
-The project provides screen reading, taps, text input, Home and Spotlight navigation, App Switcher, and vertical and horizontal scroll interfaces. No jailbreak, developer mode, or phone-side runner is required.
+The usual approach brings the mirror window to the foreground or moves the system pointer before posting events. This project does not: clicks, text input and navigation target the mirror process or window directly, without switching the system foreground, changing keyboard focus or moving the mouse.
 
-It runs locally on the Mac and is not tied to a model or client. It can connect to clients such as Pi and Codex through MCP stdio. Actual Pi calls with a configured DeepSeek Flash provider have been recorded.
+The conditions are equally explicit: before input it takes a local screenshot and uses Apple Vision OCR to judge the page state; **scrolling requires the mirror window to be visible on the current desktop with at least one area not covered by other windows** (it does not have to be the frontmost window). No jailbreak, developer mode or phone-side app is required.
 
-> This is an experimental preview, tested on one Mac/iPhone pair. Vertical scrolling has device evidence. The user confirmed horizontal movement; exact left/right mapping still awaits validation. App Switcher awaits device acceptance. Scrolling is off by default. When enabled, it requires an uncovered area of the mirror on the current desktop.
+> Experimental preview: vertical scrolling has device evidence; horizontal movement is confirmed by the user, and exact left/right mapping is still being checked; App Switcher awaits device acceptance. Scrolling is available by default but still subject to the visibility check.
 
-## Conditions for use
+## Quick start
 
-- Use a Mac that supports iPhone Mirroring and a paired iPhone. Connect manually and keep the iPhone locked.
-- **Both vertical and horizontal scrolling require a visible mirror** on the current desktop. It must not be minimized, hidden, or fully covered. It does not need to be the foreground app.
-- The implementation checks three candidate points on the window's center line. At least one must be uncovered. An exposed window edge alone may not suffice.
-- If no candidate is available, the driver reports an error without sending wheel events. It stops further submission if the target point, Mac foreground, or keyboard focus changes. Previously submitted events may still take effect.
-- The host application needs screen recording and Accessibility permissions, as described below.
-- Use only one phone driver at a time. Check the fresh screenshot or OCR after each action.
+Send this line to your AI agent:
 
-Vertical scrolling has device evidence, and the user confirmed horizontal movement. Exact left/right mapping and App Switcher await acceptance. Long press, dragging, and multi-touch are not supported.
+> Set up https://github.com/Vist233/iphone-mirror-mcp so I can use it to control my iPhone.
 
-Some successful actions preserved sampled Mac foreground, keyboard focus, and cursor position. Other trials contained changes. The project cannot guarantee uninterrupted desktop use across all apps or OS versions. See the [validation record](docs/VALIDATION.md).
+A person does two things: grant permissions (see [Required permissions](#required-permissions)), and connect iPhone Mirroring with the iPhone locked. The rest is the agent's job; the how-to is in [AGENTS.md](AGENTS.md).
+
+## Required permissions
+
+In macOS System Settings → Privacy & Security, enable these for the program that actually launches the tool:
+
+| Permission | Purpose |
+| --- | --- |
+| Screen Recording / Screen & System Audio Recording | Capture the iPhone Mirroring window for OCR and image observation; no audio is captured |
+| Accessibility / related device-control permission | Read the mirror's accessibility state and post clicks, keyboard and wheel events |
+
+Pane names vary by macOS version and language. If you launch from Terminal or iTerm, check that terminal; if Codex or another MCP client launches it, check that client. Trust the responsible program named by macOS — granting only "iPhone Mirroring" is not enough.
+
+After changing permissions, quit and reopen the host program when macOS asks. The driver checks input-event posting permission, but `trusted_post_event` in `info` is not a full permission diagnosis; confirm capture and OCR with one `read` call.
+
+The published code does not listen to global keyboard or wheel input, so Input Monitoring is not a runtime requirement; Full Disk Access, Microphone and Apple Events automation are not required either. Connection, authentication and Face ID prompts remain user actions.
+
+Entry points for the relevant panes: Apple's [Accessibility](https://support.apple.com/en-euro/guide/mac-help/mh43185/27/mac/27) and [Screen Recording](https://support.apple.com/en-gb/guide/mac-help/mchl592e5686/mac) guides.
+
+## Usage conditions
+
+1. iPhone Mirroring is connected and the iPhone stays locked.
+2. When scrolling, the mirror window must be exposed: on the current desktop, with at least one area not covered by other windows; it does not need to be the frontmost app.
+
+Why these conditions exist and what to do when an action fails is covered in [the detailed guide for AI](#detailed-guide-for-ai).
+
+## Data and privacy: what leaves your Mac
+
+The project itself makes no network requests: no model API, account or API key, and no telemetry, crash reporting or analytics SDK. The following is handed to the MCP client that calls it:
+
+| Content | Source | Notes |
+| --- | --- | --- |
+| OCR text rows | `mirror_observe` | Screen text, confidence, normalized coordinates |
+| Screenshot | `mirror_observe` with `image: true` | PNG, base64 encoded |
+| Window and focus metadata | `mirror_status`, action results | Window ID and size, foreground and background PIDs, keyboard focus, cursor position, input permission state |
+
+- If the client uses a cloud model, this content is sent to the model service like any other conversation; whether and where it is uploaded depends on the client and your configuration. This project neither participates in nor records that.
+- Screenshots are written to disk in only two places: the CLI `read` and `capture` commands write to the path the caller gives; the MCP path uses a temporary directory and deletes the file when the OCR call returns, so it does not persist.
+- OCR reads all visible text on the screen, which may include private messages, verification codes or notifications. Confirm the client's data handling before connecting.
+- The project does not read the clipboard, capture audio, listen to global keyboard or wheel input, or touch Photos and notifications.
 
 ## How it works
 
 ```text
 AI / MCP client
     ↓ MCP stdio
-server.py              Parameter validation, device lock, dispatch, observation
+server.py              argument validation, device lock, tool dispatch, post-action observation
     ↓
-mirror-driver          Selects Python and starts the driver
+mirror-driver          selects the Python environment and starts the driver
     ↓
-mirror_driver.py       Capture, Vision OCR, taps, keyboard and scroll events
+mirror_driver.py       capture, Vision OCR, click, keyboard and wheel events
     ↓
-iPhone Mirroring on Mac
+iPhone Mirroring on the Mac
     ↓ Apple handles the connection and interaction transport
 iPhone
 ```
 
-The driver operates the mirror on the Mac. It does not connect directly to an iPhone control protocol. Screenshots and Apple Vision OCR provide observations. No model API is required at runtime.
+The driver operates the mirror on the Mac; it does not speak the iPhone control protocol directly. Reading the screen uses local capture and Apple Vision OCR. No model API is needed at runtime.
 
-## Required permissions
+## Detailed guide for AI
 
-In macOS System Settings → Privacy & Security, enable these permissions for the application that actually launches the tool:
-
-| Permission | Purpose |
-| --- | --- |
-| Screen Recording / Screen & System Audio Recording | Capture the mirror for OCR and image observation; this project does not capture audio |
-| Accessibility / related device-control permission | Read the mirror's accessibility state and submit taps, keyboard input, and wheel events |
-
-Names vary by macOS version and language. When launching from Terminal or iTerm, check that terminal's permissions. When launching from Codex or another MCP client, check that client. Follow the responsible application named by macOS; permission for iPhone Mirroring alone is insufficient.
-
-After changing permissions, quit and reopen the host if macOS requests it. The driver checks event-posting permission. The `trusted_post_event` field from `info` is not a complete permissions check. Use `read` to check capture and OCR as well.
-
-Published code does not monitor global keyboard or wheel input, so Input Monitoring is not a runtime requirement. Full Disk Access, microphone access, and Apple Events Automation are not required by the current implementation. The user handles connection, authentication, and Face ID prompts.
-
-See Apple's instructions for [Accessibility](https://support.apple.com/en-euro/guide/mac-help/mh43185/27/mac/27) and [screen recording](https://support.apple.com/en-gb/guide/mac-help/mchl592e5686/mac).
-
-## Installation
-
-Run these commands in the project directory:
-
-```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-chmod +x mirror-driver
-```
-
-The MCP server uses only the Python standard library. The driver requires PyObjC. Pinned versions are in [requirements.txt](requirements.txt).
-
-The launcher uses the project's `.venv/bin/python` by default. Set `MIRROR_PYTHON` to select another interpreter. The launcher does not automatically select a named pyenv environment. Fresh installation on another Mac remains unverified.
-
-## Three ways to call the project
-
-The three modes share a driver but have different entry points and current return values. The following examples describe existing behavior. Future output design is in the [interface draft (Chinese)](docs/INTERFACE-DESIGN.md).
-
-### Terminal / CLI
-
-Run commands in the project directory. `info` checks the window, focus, and event-posting permission without phone input. `read` saves a screenshot and returns OCR.
-
-```sh
-./mirror-driver info
-./mirror-driver read /tmp/iphone-mirror-read.png
-./mirror-driver capture /tmp/iphone-mirror-capture.png
-```
-
-Run only the required action after checking the phone screen:
-
-```sh
-./mirror-driver home
-./mirror-driver spotlight
-./mirror-driver app_switcher
-./mirror-driver tap 0.5 0.5
-./mirror-driver text '你好，iPhone'
-./mirror-driver text '替换内容' replace
-./mirror-driver type 'Hello'
-```
-
-`text` uses Unicode. `type` uses physical English-layout keycodes. Focus the field first. Run `./mirror-driver key return` only when submission is intended and authorized.
-
-Scrolling currently requires the experimental flag. Presets are 20, 50, 100, and 200, with either sign. These examples request a small vertical step and a horizontal page action. Reverse the sign for the opposite direction:
-
-```sh
-MIRROR_ENABLE_EXPERIMENTAL_INPUT=1 ./mirror-driver scroll -20
-MIRROR_ENABLE_EXPERIMENTAL_INPUT=1 ./mirror-driver scroll -200 horizontal
-```
-
-The CLI currently prints one JSON object to stdout and exits with code 1 on failure. It has no concise human-readable format. Actions do not automatically return subsequent OCR; call `read` separately. Direct driver calls also bypass the MCP transaction lock.
-
-### Code mode / composing calls in code
-
-There is no dedicated code-mode SDK. Python can call the existing `server.call()` from the project directory. This is an internal entry point without a stable API commitment. It preserves the device transaction lock and observes after actions. The `server` module requires no MCP Python SDK.
-
-```sh
-.venv/bin/python - <<'PY'
-import json
-from server import call
-
-content = call('mirror_observe', {'image': False})
-for item in content:
-    if item['type'] == 'text':
-        print(json.dumps(json.loads(item['text']), ensure_ascii=False, indent=2))
-PY
-```
-
-The return value is currently a list of MCP content items. JSON inside text items needs another parsing step. This is not a dedicated object API. Scroll calls still require the experimental flag in the process environment.
-
-### MCP / client tool calls
-
-Replace the paths with absolute paths to your checkout. This example explicitly enables experimental scrolling. Omit `MIRROR_ENABLE_EXPERIMENTAL_INPUT` to leave scrolling disabled.
-
-```json
-{
-  "mcpServers": {
-    "iphone-local": {
-      "command": "/absolute/path/iphone-mirror-mcp/.venv/bin/python",
-      "args": ["/absolute/path/iphone-mirror-mcp/server.py"],
-      "env": {
-        "MIRROR_PYTHON": "/absolute/path/iphone-mirror-mcp/.venv/bin/python",
-        "MIRROR_ENABLE_EXPERIMENTAL_INPUT": "1"
-      }
-    }
-  }
-}
-```
-
-Configuration locations vary by client. The example above uses a common format. Pi can use the project's `.pi/mcp.json`. Check the connection with `pi mcp list --json`. Pi's built-in MCP extension must be enabled. With `--no-extensions`, explicitly include `--extension builtin:mcp`.
-
-A client sends a `tools/call` request, for example:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "tools/call",
-  "params": {
-    "name": "mirror_observe",
-    "arguments": {"image": false}
-  }
-}
-```
-
-This is an MCP protocol request, not a shell command. `server.py` uses stdin/stdout for JSON-RPC; human-readable prompts must not appear on stdout. MCP currently returns text/image content. Submitted actions append OCR, and observation failures preserve the submission report.
+People only need the two conditions above. The agent reads [AGENTS.md](AGENTS.md) on demand: installation, wiring, tool arguments, plus permission failures, visibility rules, partial submission and retry rules.
 
 ## Tools
 
 | Tool | Arguments and purpose |
 | --- | --- |
-| `mirror_status` | No arguments; reports window, focus, and scroll configuration |
+| `mirror_status` | No arguments; reports window, focus and scroll capability configuration |
 | `mirror_observe` | OCR by default; optional `image: true` also returns a screenshot |
 | `mirror_tap` | Normalized window coordinates `x` and `y`, each in `[0,1)` |
 | `mirror_tap_text` | `text` is a substring that must match exactly one OCR item |
-| `mirror_navigate` | `destination`: `home`, `spotlight`, or `app_switcher` |
+| `mirror_navigate` | `destination`: `home`, `spotlight` or `app_switcher` |
 | `mirror_input` | `action: text` with `text`, optional `mode: unicode/ascii` and `replace`; or `action: enter` alone |
-| `mirror_scroll` | `direction: up/down/left/right`, optional `magnitude: 20/50/100/200` (default 50); or vertical legacy `dy` alone, using either sign of these presets |
+| `mirror_scroll` | `direction: up/down/left/right`, optional `magnitude: 20/50/100/200` (default 50); or the legacy vertical-only `dy` |
 
-For example, an MCP horizontal page tool call is:
+Parameter details, CLI commands and scroll presets are in [AGENTS.md](AGENTS.md).
 
-```json
-{"name":"mirror_scroll","arguments":{"direction":"left","magnitude":200}}
-```
+## FAQ
 
-This is a tool name and arguments, not a shell command. Legacy `dy` cannot be combined with `direction` or `magnitude`. Code-mode `server.call()` uses the same tool arguments.
+### Is granting permissions mandatory? What happens without them?
 
-Version 0.3.0 consolidates five previous navigation and input tools into `mirror_navigate` and `mirror_input`. Refresh the client's tool list after upgrading and update old calls.
+Yes, mandatory. Without Screen Recording the driver cannot capture or OCR and refuses before sending any input; without Accessibility, clicks, keyboard and wheel events cannot be posted. Grant permissions to the program that actually launches the tool (the terminal or MCP client) — granting only "iPhone Mirroring" does nothing. Restart the host program after changing them.
 
-Text input uses Unicode by default and supports Chinese and emoji. `mode: ascii` uses physical keycodes for an English keyboard layout. Focus the target field first. `replace: true` replaces its contents. Each call accepts up to 200 characters, rejects control characters, and leaves the clipboard unchanged.
+### Does it take over the foreground or move my mouse?
 
-Text input never submits automatically. To press Return, call `mirror_input` separately with `{"action":"enter"}`. Return can submit a search, message, or form. Use it only with an identified target and user authorization.
+No. The driver does not use global `CGEventPost`, does not warp the pointer, and does not bring the mirror to the system foreground; clicks, keyboard and scrolling are posted to the mirror process or window. Results expose `focus_unchanged`, `cursor_same_at_samples` and 25 ms sampling records for checking. Boundaries are in [the detailed guide for AI](#detailed-guide-for-ai): sampling cannot cover every instant, some earlier trials did contain pointer changes, and cross-app, cross-version behavior remains unverified.
 
-### Scroll direction
+### Why does scrolling require a visible window when tapping does not?
 
-`direction` describes content movement, not finger or wheel movement:
+WindowServer hit-tests scroll events against the target point inside the event record; with no visible point belonging to the mirror there is nowhere to deliver them, so the driver checks first and reports an error instead of sending the event to another window. Clicks and keyboard input go directly to the mirror process and do not depend on that hit test.
 
-| Argument | Meaning |
-| --- | --- |
-| `up` | Content moves up to reveal later items; equivalent to `dy: 50` |
-| `down` | Content moves down to reveal earlier items; equivalent to `dy: -50` |
-| `left` / `right` | Requests content movement left / right; user confirmed horizontal movement, exact mapping awaits validation |
+### Does it require jailbreak, developer mode or a phone-side app?
 
-### What does 50 mean?
+No. The project uses only Apple's built-in iPhone Mirroring on the Mac and local PyObjC. Nothing is installed on the iPhone.
 
-`50` is the signed delta passed to a Core Graphics wheel event using pixel units. It is not a phone coordinate or measured content displacement. The sign selects event direction. All four presets use the same construction: `(deltaY=±magnitude)` vertically and `(deltaY=0, deltaX=±magnitude)` horizontally.
+### Does it work on Windows or Linux? Can I use it without a Mac?
 
-Each request sends two equal-delta events about 40ms apart. It guarantees neither 50 nor 100 pixels of phone content movement. Mirroring conversion, the target app, list boundaries, and page snapping affect the result.
+No. The implementation depends on macOS private SkyLight interfaces and iPhone Mirroring, with no cross-platform path.
 
-The CLI and MCP accept four magnitudes: 20, 50, 100, and 200. They are not physical maxima derived from screen dimensions. The user reports all four work on their setup, and **horizontal 200 flips a page while 100 does not**. This threshold is not guaranteed on other devices, apps, or window sizes. No instrumented displacement dataset for all four presets was collected in this revision.
+### Which AI clients are supported?
 
-| Magnitude | Suggested use |
-| --- | --- |
-| 20 | Smaller input step; a starting point for fine adjustment near a target |
-| 50 | Existing default when MCP `magnitude` is omitted |
-| 100 | Larger input step; user reports it is insufficient for horizontal page changes |
-| 200 | User reports horizontal page changes; inspect the screen for vertical displacement |
+Any MCP stdio client, such as Claude Code, Codex or Pi. Actual calls with Pi and a DeepSeek Flash provider have been recorded; wiring is in [AGENTS.md](AGENTS.md) and the agent does it.
 
-For “half a screen” or “one screen,” an upper-level interface should express a fraction of the visible content area. Vertical actions refer to content height; horizontal actions refer to width, excluding window chrome. Event delta needs measured calibration to content movement. It cannot be assumed equal. Drag endpoints are constrained by screen geometry, but this project sends wheel events.
+### Does it upload my screen content to the cloud?
 
-Our proposal is to target about 0.7 of the visible area for ordinary lists, preserving context overlap. Near a target, use smaller steps and inspect observations. This is a design proposal awaiting implementation and calibration, not an Apple rule or an existing `amount` parameter. Use the four presets for now; paged interfaces still need page-change checks.
+The project does not use the network itself. OCR text, optional screenshots and window metadata are handed to the MCP client; if the client uses a cloud model, that content is sent with the conversation, as determined by the client and your configuration. On the MCP path, screenshots exist only in a temporary directory and are deleted after OCR.
 
-See Apple's definitions of [scroll units](https://developer.apple.com/documentation/coregraphics/cgscrolleventunit) and the [event constructor](https://developer.apple.com/documentation/coregraphics/cgeventcreatescrollwheelevent).
+### Does it support long press, drag or multi-touch? What if scrolling does not move?
 
-Horizontal scrolling creates a two-axis event: zero vertical delta and the selected signed horizontal magnitude, without a Shift flag. The user reported that the previous Shift+vertical-wheel approach still moved vertically. That approach has been replaced. The user confirmed the two-axis approach and page changes with 200. This is not a complete bidirectional or cross-app acceptance result.
+Long press, dragging and multi-touch are not supported. No movement can mean a list boundary, an input failure or an observation problem. Do not automatically repeat or reverse an uncertain action; observe first.
 
-App Switcher uses Command+2, as described in [Apple's documentation](https://support.apple.com/en-us/120421). Its background event path in this project still awaits device acceptance.
+### Is it free? Can it run unattended?
 
-### Keep the experimental flag?
+It is MIT licensed and free to use and modify. This is an experimental preview validated on one Mac/iPhone pair; cross-machine, cross-version and long unattended operation remain unverified.
 
-`MIRROR_ENABLE_EXPERIMENTAL_INPUT=1` is an early input-route gate, not permission to scroll an invisible mirror. It never bypasses the visibility check.
+## Validation and limits
 
-We propose removing this explicit flag from routine use of the integrated scroll route. Execute only when conditions hold; otherwise return an error that explains non-execution. Do not silently skip or report success. Preserve checks before each event and reject unsupported input routes. This revision only documents the proposal; the flag remains in code and examples.
-
-## Checking action results
-
-Observe before each action. Inspect the fresh screenshot or OCR returned afterward.
-
-- `submission: submitted` means only that events were sent.
-- `phone_effect_verified: false` means the client must still verify the phone result.
-- If observation fails after submission, the server preserves the submission report and returns `retry_action: false`.
-
-No movement can mean a list boundary, input failure, or observation problem. Do not automatically repeat or reverse an uncertain action. Driver errors or timeouts can also leave partial phone effects.
-
-## Implementation and limits
-
-Taps use target-process SkyLight event records. Keyboard input prepares the mirror's internal activation and receiving-window state before sending target-process events.
-
-a1 scrolling submits two pixel-wheel records through `SLSPostEventRecord`, about 40ms apart. Each record contains the target point. The vertical path does not prime internal activation, switch system foreground, or warp the pointer. The driver stops further submission if it detects a foreground, keyboard focus, or coverage change.
-
-Only the a1 route is published. Other `MIRROR_SCROLL_SCHEME` values are rejected. Hidden, fully covered, minimized, and other-desktop mirrors have not passed scroll acceptance.
-
-SkyLight functions and event layouts are private interfaces that can change across macOS versions. Focus and cursor sampling runs about every 25ms and cannot cover every instant. OCR can merge text or misread icons and emoji.
-
-A per-user file lock serializes this MCP server's instances. It cannot coordinate other drivers, direct CLI calls, or user actions. Cross-machine, cross-version, and long unattended operation remain unverified.
-
-## Tests
-
-```sh
-python3 -m unittest -v test_server.py
-```
-
-The current suite has 30 offline tests for the protocol, validation, dispatch, and driver guards, including all four signed presets, both axes, and delta construction. They send no phone input. See the [validation record](docs/VALIDATION.md) for device evidence and pending checks.
-
-Experiments, screenshots, videos, model sessions, local environments, and private job-search data are not distributed.
+Validated on one Mac/iPhone pair; focus and cursor sampling runs about every 25 ms and cannot cover every instant. Cross-machine, cross-version and long unattended operation remain unverified. Experimental files, screenshots, recordings, model sessions and local runtime environments are not distributed.
 
 ## Acknowledgments and license
 
@@ -272,4 +144,3 @@ The SkyLight event-record implementation draws on [phone-harness](https://github
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for provenance. This project uses the [MIT license](LICENSE).
 
 The Chinese README is the primary document. This English version follows it.
-

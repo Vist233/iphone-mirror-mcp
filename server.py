@@ -48,7 +48,7 @@ TOOLS = [
     tool('mirror_input', 'Input into a focused phone field. action=text uses Unicode by default; mode=ascii uses English-layout physical keys. replace=true replaces text. action=enter explicitly presses Return and may submit a message or form; use only with user authorization and a verified target. Text never implicitly submits.',
          {'action':{'type':'string','enum':['text','enter']}, 'text':{'type':'string','maxLength':200},
           'mode':{'type':'string','enum':['unicode','ascii']}, 'replace':{'type':'boolean'}}, ['action']),
-    tool('mirror_scroll', 'Bounded scroll; requires MIRROR_ENABLE_EXPERIMENTAL_INPUT=1 and a visible uncovered mirror point. Provide direction plus optional magnitude (20/50/100/200, default 50), OR signed legacy dy for vertical scrolling. direction describes intended content movement. User reports horizontal 200 flips a page while 100 does not on their setup; not a universal threshold. Inspect the observation; do not retry automatically.',
+    tool('mirror_scroll', 'Bounded scroll; requires a visible uncovered mirror point. Provide direction plus optional magnitude (20/50/100/200, default 50), OR signed legacy dy for vertical scrolling. direction describes intended content movement. User reports horizontal 200 flips a page while 100 does not on their setup; not a universal threshold. Inspect the observation; do not retry automatically.',
          {'dy':{'type':'integer','enum':list(SIGNED_SCROLL_DELTAS)},
           'magnitude':{'type':'integer','enum':list(SCROLL_MAGNITUDES),'default':DEFAULT_SCROLL_MAGNITUDE},
           'direction':{'type':'string','enum':['up','down','left','right']}}),

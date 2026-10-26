@@ -308,7 +308,7 @@ def main(arguments):
                                 'app_switcher':'implemented_device_validation_pending',
                                 'horizontal_scroll':'axis2_user_confirmed_direction_mapping_pending',
                                 'scroll_magnitudes':list(SCROLL_MAGNITUDES),
-                                'scroll':('experimental_a1_enabled' if os.environ.get('MIRROR_ENABLE_EXPERIMENTAL_INPUT') == '1' else 'disabled_by_default')}}
+                                'scroll':'a1_enabled_visibility_checked'}}
     if command in ('capture', 'read'):
         path = args[0]
         if command == 'read':
@@ -326,8 +326,8 @@ def main(arguments):
     if not rows or any(message in visible for message in blocked):
         raise RuntimeError('Mirror not ready or screen unreadable; reconnect manually. No event sent.')
     verified_key = command == 'key' and args in (['return'], ['enter'])
-    if command not in ('tap', 'home', 'spotlight', 'app_switcher', 'type', 'text') and not verified_key and os.environ.get('MIRROR_ENABLE_EXPERIMENTAL_INPUT') != '1':
-        raise RuntimeError('This input route has not passed noninterference verification and is disabled.')
+    if command != 'scroll' and command not in ('tap', 'home', 'spotlight', 'app_switcher', 'type', 'text') and not verified_key:
+        raise RuntimeError('Unsupported input route; no event sent.')
     if command == 'type' and (len(args[0])>200 or any(c.lower() not in KEYS for c in args[0])):
         raise ValueError('Unsupported physical key. Use the Unicode text command for non-ASCII text.')
     if command == 'text' and (len(args[0])>200 or any(ord(c)<32 or ord(c)==127 for c in args[0])):
@@ -359,9 +359,7 @@ def main(arguments):
             primed = focus_state()
             if any(primed[key] != before[key] for key in ('front_pid','keyboard_pid')):
                 raise RuntimeError('Input priming changed system focus; no text or scroll sent.')
-        if command in ('tap', 'longpress'):
-            if command == 'longpress':
-                raise ValueError('Long press is not verified.')
+        if command == 'tap':
             x, y = coordinate(args[0], bounds['Width']), coordinate(args[1], bounds['Height'])
             point = (bounds['X']+x, bounds['Y']+y, x, y)
             try:

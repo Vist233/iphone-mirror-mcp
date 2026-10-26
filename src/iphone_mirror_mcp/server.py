@@ -7,13 +7,21 @@ import json
 import math
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 import tempfile
 from . import __version__
 from .presets import SCROLL_MAGNITUDES, SIGNED_SCROLL_DELTAS, DEFAULT_SCROLL_MAGNITUDE
 
-DRIVER = os.environ.get('MR_MIRRORCTL', '').split() or [sys.executable, '-m', 'iphone_mirror_mcp.driver']
+_driver_override = os.environ.get('MR_MIRRORCTL', '').strip()
+if _driver_override:
+    try:
+        DRIVER = shlex.split(_driver_override)
+    except ValueError as error:
+        raise RuntimeError(f'MR_MIRRORCTL is not a valid command line: {error}')
+else:
+    DRIVER = [sys.executable, '-m', 'iphone_mirror_mcp.driver']
 VERSIONS = ('2025-06-18', '2025-03-26', '2024-11-05')
 LOCK_PATH = Path(os.environ.get('MIRROR_LOCK_PATH', f'/tmp/iphone-mirror-{os.getuid()}.lock'))
 

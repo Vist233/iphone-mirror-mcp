@@ -83,6 +83,12 @@ Capture and Vision OCR run locally. Taps use target-process SkyLight records. Ke
 
 SkyLight functions and record layouts are private interfaces that can change between macOS versions. Input sampling runs at about 25ms intervals, not continuously. OCR can merge icons or misread emoji. A per-user file lock serializes copies of this MCP server but cannot coordinate other drivers, direct CLI calls or the user.
 
+## Acknowledgments
+
+The target-process SkyLight event-record implementation draws on [phone-harness](https://github.com/ShawnPana/phone-harness), especially its `background.py` event-record layout. Its MIT copyright notice is retained in [third_party/phone-harness-LICENSE](third_party/phone-harness-LICENSE). [yabai](https://github.com/koekeishiya/yabai) is an indirect reference for the make-key approach, via phone-harness.
+
+[mirroir-mcp](https://github.com/jfarcand/mirroir-mcp) and [GUIWeave](https://github.com/hyechow/GUIWeave) informed comparison and research. They are not runtime dependencies. This repository contains its own MCP server and local driver; it does not launch these projects. See [provenance details](THIRD_PARTY_NOTICES.md).
+
 ## Tests and provenance
 
 ```sh

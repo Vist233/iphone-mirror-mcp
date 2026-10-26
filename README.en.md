@@ -16,7 +16,7 @@ Send this line to your AI agent:
 
 > Set up https://github.com/Vist233/iphone-mirror-mcp so I can use it to control my iPhone.
 
-A person does two things: grant permissions (see [Required permissions](#required-permissions)), and connect iPhone Mirroring with the iPhone locked. The rest is the agent's job; the how-to is in [AGENTS.md](AGENTS.md).
+A person does two things: grant permissions (see [Required permissions](#required-permissions)), and connect iPhone Mirroring with the iPhone locked. The rest is the agent's job.
 
 ## Required permissions
 
@@ -62,11 +62,9 @@ The project itself makes no network requests: no model API, account or API key, 
 ```text
 AI / MCP client
     ↓ MCP stdio
-server.py              argument validation, device lock, tool dispatch, post-action observation
-    ↓
-mirror-driver          selects the Python environment and starts the driver
-    ↓
-mirror_driver.py       capture, Vision OCR, click, keyboard and wheel events
+iphone_mirror_mcp.server   argument validation, device lock, tool dispatch, post-action observation
+    ↓ starts the driver process
+iphone_mirror_mcp.driver   capture, Vision OCR, click, keyboard and wheel events
     ↓
 iPhone Mirroring on the Mac
     ↓ Apple handles the connection and interaction transport
@@ -137,10 +135,10 @@ Validated on one Mac/iPhone pair; focus and cursor sampling runs about every 25 
 
 ## Acknowledgments and license
 
-The SkyLight event-record implementation draws on [phone-harness](https://github.com/ShawnPana/phone-harness), especially the layout in its `background.py`. Its [MIT copyright notice and license](third_party/phone-harness-LICENSE) are retained. [yabai](https://github.com/koekeishiya/yabai) is an indirect reference for the make-key approach, through phone-harness.
+The SkyLight event-record implementation draws on [phone-harness](https://github.com/ShawnPana/phone-harness), especially the layout in its `background.py`; its MIT notice is reproduced in [NOTICE](NOTICE). [yabai](https://github.com/koekeishiya/yabai) is an indirect reference for the make-key approach, through phone-harness.
 
 [mirroir-mcp](https://github.com/jfarcand/mirroir-mcp) and [GUIWeave](https://github.com/hyechow/GUIWeave) informed comparison and research. They are not runtime dependencies. This project does not launch them.
 
-See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for provenance. This project uses the [MIT license](LICENSE).
+Third-party sources and the full license text are in [NOTICE](NOTICE). This project uses the [MIT license](LICENSE).
 
 The Chinese README is the primary document. This English version follows it.

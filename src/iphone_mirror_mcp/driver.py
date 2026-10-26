@@ -21,7 +21,7 @@ import ApplicationServices as AX
 import Quartz as Q
 import Vision
 from Foundation import NSURL
-from scroll_presets import SCROLL_MAGNITUDES
+from .presets import SCROLL_MAGNITUDES
 
 SKY = ctypes.CDLL('/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight')
 AS = ctypes.CDLL('/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices')
@@ -427,9 +427,12 @@ def main(arguments):
             'fresh screen before deciding on another action; do not retry automatically.')
     return result
 
-if __name__ == '__main__':
+def cli():
     try:
         print(json.dumps(main(sys.argv[1:]),ensure_ascii=False))
     except Exception as error:
         print(json.dumps({'ok':False,'error':str(error)},ensure_ascii=False))
         sys.exit(1)
+
+if __name__ == '__main__':
+    cli()

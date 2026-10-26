@@ -10,10 +10,9 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-from scroll_presets import SCROLL_MAGNITUDES, SIGNED_SCROLL_DELTAS, DEFAULT_SCROLL_MAGNITUDE
+from .presets import SCROLL_MAGNITUDES, SIGNED_SCROLL_DELTAS, DEFAULT_SCROLL_MAGNITUDE
 
-ROOT = Path(__file__).resolve().parent
-DRIVER = os.environ.get('MR_MIRRORCTL', str(ROOT/'mirror-driver'))
+DRIVER = os.environ.get('MR_MIRRORCTL', '').split() or [sys.executable, '-m', 'iphone_mirror_mcp.driver']
 VERSIONS = ('2025-06-18', '2025-03-26', '2024-11-05')
 LOCK_PATH = Path(os.environ.get('MIRROR_LOCK_PATH', f'/tmp/iphone-mirror-{os.getuid()}.lock'))
 
@@ -55,7 +54,7 @@ TOOLS = [
 ]
 
 def run(*arguments):
-    result = subprocess.run([DRIVER,*map(str,arguments)],capture_output=True,text=True,timeout=25)
+    result = subprocess.run([*DRIVER,*map(str,arguments)],capture_output=True,text=True,timeout=25)
     lines = result.stdout.strip().splitlines()
     try:
         payload = json.loads(lines[-1]) if lines else {}
@@ -179,7 +178,7 @@ def response(request):
     if method == 'initialize':
         version = params.get('protocolVersion')
         return dict(envelope,result={'protocolVersion':version if version in VERSIONS else VERSIONS[0],
-                                    'capabilities':{'tools':{}}, 'serverInfo':{'name':'iphone-mirror-local','version':'0.3.1'}})
+                                    'capabilities':{'tools':{}}, 'serverInfo':{'name':'iphone-mirror-local','version':'0.4.0'}})
     if method == 'ping':
         return dict(envelope,result={})
     if method == 'tools/list':

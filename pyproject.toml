@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "iphone-mirror-mcp"
+version = "0.4.0"
+description = "Local MCP server that reads and drives iPhone Mirroring on macOS"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+classifiers = [
+    "Environment :: MacOS X",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "pyobjc-framework-Cocoa==12.2.2",
+    "pyobjc-framework-Quartz==12.2.2",
+    "pyobjc-framework-Vision==12.2.2",
+    "pyobjc-framework-ApplicationServices==12.2.2",
+]
+
+[project.scripts]
+iphone-mirror-mcp = "iphone_mirror_mcp.server:main"
+mirror-driver = "iphone_mirror_mcp.driver:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/iphone_mirror_mcp"]

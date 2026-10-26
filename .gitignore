@@ -4,6 +4,8 @@
 .env.*
 __pycache__/
 *.pyc
+dist/
+*.egg-info/
 *.png
 *.jpg
 *.jsonl

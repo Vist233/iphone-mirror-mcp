@@ -16,7 +16,7 @@
 
 > 按 https://github.com/Vist233/iphone-mirror-mcp 配置好，让我用它操作 iPhone。
 
-人只做两件事：开权限（见[需要哪些权限](#需要哪些权限)）、连上「iPhone 镜像」并锁屏。其余交给 Agent，做法在 [AGENTS.md](AGENTS.md)。
+人只做两件事：开权限（见[需要哪些权限](#需要哪些权限)）、连上「iPhone 镜像」并锁屏。其余交给 Agent。
 
 ## 需要哪些权限
 
@@ -62,11 +62,9 @@
 ```text
 AI / MCP 客户端
     ↓ MCP stdio
-server.py              参数校验、设备锁、工具分发、操作后读屏
-    ↓
-mirror-driver          选择 Python 环境并启动驱动
-    ↓
-mirror_driver.py       截图、Vision OCR、点击、键盘和滚动事件
+iphone_mirror_mcp.server   参数校验、设备锁、工具分发、操作后读屏
+    ↓ 启动驱动进程
+iphone_mirror_mcp.driver   截图、Vision OCR、点击、键盘和滚动事件
     ↓
 Mac 上的 iPhone 镜像
     ↓ 苹果负责连接与交互传输
@@ -137,10 +135,10 @@ iPhone
 
 ## 致谢与许可证
 
-底层 SkyLight 事件记录实现参考了 [phone-harness](https://github.com/ShawnPana/phone-harness)，特别是其 `background.py` 中的记录布局。项目保留了它的 [MIT 版权与许可证](third_party/phone-harness-LICENSE)。[yabai](https://github.com/koekeishiya/yabai) 是 make-key 方法的间接参考，来源于 phone-harness 的引用。
+底层 SkyLight 事件记录实现参考了 [phone-harness](https://github.com/ShawnPana/phone-harness)，特别是其 `background.py` 中的记录布局；它的 MIT 版权与许可证全文在 [NOTICE](NOTICE)。[yabai](https://github.com/koekeishiya/yabai) 是 make-key 方法的间接参考，来源于 phone-harness 的引用。
 
 [mirroir-mcp](https://github.com/jfarcand/mirroir-mcp) 和 [GUIWeave](https://github.com/hyechow/GUIWeave) 提供了对照与研究参考。它们不是运行依赖，本项目不会启动这些项目。
 
-来源说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。本项目采用 [MIT 许可证](LICENSE)。
+第三方来源与许可证全文见 [NOTICE](NOTICE)。本项目采用 [MIT 许可证](LICENSE)。
 
 中文为主文档，英文版根据中文同步维护。

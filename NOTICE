@@ -1,3 +1,21 @@
+iPhone Mirror MCP — third-party notices
+
+The target-process SkyLight event-record approach was informed by:
+
+- phone-harness, https://github.com/ShawnPana/phone-harness, in particular its
+  background.py event-record layout.
+- yabai, https://github.com/koekeishiya/yabai, referenced by phone-harness for
+  the make-key event-record approach.
+
+mirroir-mcp (https://github.com/jfarcand/mirroir-mcp) and GUIWeave
+(https://github.com/hyechow/GUIWeave) were comparison and research references.
+No GUIWeave binary or mirrored screen is included in this repository.
+
+This project is distributed under the MIT license (LICENSE).
+
+--------------------------------------------------------------------------------
+phone-harness
+
 MIT License
 
 Copyright (c) 2026 shawn pana

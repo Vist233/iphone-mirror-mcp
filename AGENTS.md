@@ -2,37 +2,28 @@
 
 README 给人看；这里给 Agent：装、接、调，以及被拒绝或结果不明时怎么办。操作前先读一遍本文件。
 
-## 安装
-
-```sh
-git clone https://github.com/Vist233/iphone-mirror-mcp
-cd iphone-mirror-mcp
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-chmod +x mirror-driver
-```
-
-MCP 服务器只用 Python 标准库；驱动依赖 PyObjC，版本见 `requirements.txt`。启动器默认使用项目 `.venv/bin/python`，可用 `MIRROR_PYTHON` 指定解释器；不会自动选择 pyenv 环境。
-
 ## 接入 MCP
 
-把路径替换为实际克隆路径：
+不需要克隆，也不需要建虚拟环境。客户端配置：
 
 ```json
 {
   "mcpServers": {
     "iphone-local": {
-      "command": "/absolute/path/iphone-mirror-mcp/.venv/bin/python",
-      "args": ["/absolute/path/iphone-mirror-mcp/server.py"],
-      "env": {
-        "MIRROR_PYTHON": "/absolute/path/iphone-mirror-mcp/.venv/bin/python"
-      }
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/Vist233/iphone-mirror-mcp", "iphone-mirror-mcp"]
     }
   }
 }
 ```
 
-Pi 可放在项目的 `.pi/mcp.json`，用 `pi mcp list --json` 检查连接；Pi 需启用内置 MCP 扩展，使用 `--no-extensions` 时要显式加 `--extension builtin:mcp`。
+`uvx` 读取仓库里的 `pyproject.toml`，装好 PyObjC 并启动服务器。Pi 可放在 `.pi/mcp.json`，用 `pi mcp list --json` 检查连接；Pi 需启用内置 MCP 扩展，使用 `--no-extensions` 时要显式加 `--extension builtin:mcp`。
+
+已有本地克隆时，也可以直接运行：
+
+```sh
+uv run --directory /path/to/iphone-mirror-mcp iphone-mirror-mcp
+```
 
 客户端通过 `tools/call` 调用，例如：
 
@@ -45,7 +36,7 @@ Pi 可放在项目的 `.pi/mcp.json`，用 `pi mcp list --json` 检查连接；P
 }
 ```
 
-这是 MCP 协议请求，不能粘进 shell。`server.py` 的 stdout 只用于 JSON-RPC。
+这是 MCP 协议请求，不能粘进 shell。服务器的 stdout 只用于 JSON-RPC。
 
 ## 工具
 
@@ -59,31 +50,31 @@ Pi 可放在项目的 `.pi/mcp.json`，用 `pi mcp list --json` 检查连接；P
 | `mirror_input` | `action: text` 配合 `text`；可选 `mode: unicode/ascii` 和 `replace`；或只传 `action: enter` |
 | `mirror_scroll` | `direction: up/down/left/right`，可选 `magnitude: 20/50/100/200`（默认 50）；或只传纵轴旧参数 `dy` |
 
-CLI 等价命令（在项目目录执行，输出单条 JSON，失败退出码 1，不经过 MCP 事务锁）：
+CLI 等价命令（由同一个包安装，输出单条 JSON，失败退出码 1，不经过 MCP 事务锁）。在克隆目录用 `uv run mirror-driver`，没有克隆则用 `uvx --from git+https://github.com/Vist233/iphone-mirror-mcp mirror-driver`：
 
 ```sh
-./mirror-driver info
-./mirror-driver read /tmp/iphone-mirror-read.png
-./mirror-driver capture /tmp/iphone-mirror-capture.png
-./mirror-driver home
-./mirror-driver spotlight
-./mirror-driver app_switcher
-./mirror-driver tap 0.5 0.5
-./mirror-driver text '你好，iPhone'
-./mirror-driver text '替换内容' replace
-./mirror-driver type 'Hello'
-./mirror-driver key return
-./mirror-driver scroll -20
-./mirror-driver scroll -200 horizontal
+mirror-driver info
+mirror-driver read /tmp/iphone-mirror-read.png
+mirror-driver capture /tmp/iphone-mirror-capture.png
+mirror-driver home
+mirror-driver spotlight
+mirror-driver app_switcher
+mirror-driver tap 0.5 0.5
+mirror-driver text '你好，iPhone'
+mirror-driver text '替换内容' replace
+mirror-driver type 'Hello'
+mirror-driver key return
+mirror-driver scroll -20
+mirror-driver scroll -200 horizontal
 ```
 
 `text` 用 Unicode；`type` 用英文布局物理键码。先聚焦输入框。CLI 不会在动作后自动读屏，需要另行 `read`。
 
-也可以在项目目录用 Python 调 `server.call()`（内部入口，接口未承诺稳定；保留事务锁，动作后自动读屏）：
+也可以在代码里调服务器函数（内部入口，接口未承诺稳定；保留事务锁，动作后自动读屏）：
 
 ```python
 import json
-from server import call
+from iphone_mirror_mcp.server import call
 
 content = call('mirror_observe', {'image': False})
 for item in content:

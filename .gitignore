@@ -1,0 +1,10 @@
+.venv/
+.pi/
+.env
+.env.*
+__pycache__/
+*.pyc
+*.png
+*.jpg
+*.jsonl
+.DS_Store

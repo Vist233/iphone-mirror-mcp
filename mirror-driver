@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+MIRROR_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+MIRROR_RUNTIME="${MIRROR_PYTHON:-$MIRROR_ROOT/.venv/bin/python}"
+if [ ! -x "$MIRROR_RUNTIME" ]; then
+  printf '%s\n' 'No PyObjC Python runtime. Install requirements into .venv or set MIRROR_PYTHON.' >&2
+  exit 1
+fi
+exec "$MIRROR_RUNTIME" "$MIRROR_ROOT/mirror_driver.py" "$@"

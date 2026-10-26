@@ -222,12 +222,12 @@ def wheel_record(source, delta, point, horizontal=False):
     The returned event owns the record's memory, so the caller must keep it
     referenced until after the record has been posted.
     """
-    event = Q.CGEventCreateScrollWheelEvent(source, Q.kCGScrollEventUnitPixel, 1, delta)
+    if horizontal:
+        event = Q.CGEventCreateScrollWheelEvent(source, Q.kCGScrollEventUnitPixel, 2, 0, delta)
+    else:
+        event = Q.CGEventCreateScrollWheelEvent(source, Q.kCGScrollEventUnitPixel, 1, delta)
     if event is None:
         raise RuntimeError('Scroll event creation failed.')
-    if horizontal:
-        # Apple's documented Shift+wheel route; no global modifier key is pressed.
-        Q.CGEventSetFlags(event, Q.kCGEventFlagMaskShift)
     record = EVENT_RECORD_POINTER(objc.pyobjc_id(event))
     if not record:
         raise RuntimeError('Scroll event produced no record.')
@@ -307,7 +307,7 @@ def main(arguments):
                                 'ascii_type':'enabled_physical_keys_english_layout', 'unicode_type':True,
                                 'navigation_keys':['return','enter'],
                                 'app_switcher':'implemented_device_validation_pending',
-                                'horizontal_scroll':'shift_wheel_device_validation_pending',
+                                'horizontal_scroll':'axis2_user_confirmed_direction_mapping_pending',
                                 'scroll':('experimental_a1_enabled' if os.environ.get('MIRROR_ENABLE_EXPERIMENTAL_INPUT') == '1' else 'disabled_by_default')}}
     if command in ('capture', 'read'):
         path = args[0]

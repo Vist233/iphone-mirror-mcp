@@ -47,7 +47,7 @@ TOOLS = [
     tool('mirror_input', 'Input into a focused phone field. action=text uses Unicode by default; mode=ascii uses English-layout physical keys. replace=true replaces text. action=enter explicitly presses Return and may submit a message or form; use only with user authorization and a verified target. Text never implicitly submits.',
          {'action':{'type':'string','enum':['text','enter']}, 'text':{'type':'string','maxLength':200},
           'mode':{'type':'string','enum':['unicode','ascii']}, 'replace':{'type':'boolean'}}, ['action']),
-    tool('mirror_scroll', 'Experimental bounded scroll; disabled unless MIRROR_ENABLE_EXPERIMENTAL_INPUT=1. Provide direction (content movement: up/down/left/right) OR legacy dy (-50 earlier, +50 later). Horizontal uses Shift+wheel and still needs device validation. Requires an uncovered mirror point. Inspect the returned observation; do not retry automatically.',
+    tool('mirror_scroll', 'Experimental bounded scroll; disabled unless MIRROR_ENABLE_EXPERIMENTAL_INPUT=1. Provide direction (intended content movement: up/down/left/right) OR legacy dy (-50 earlier, +50 later). Horizontal uses axis 2 with zero vertical delta; user confirmed movement, exact left/right mapping still awaits validation. Requires an uncovered mirror point. Inspect the returned observation; do not retry automatically.',
          {'dy':{'type':'integer','enum':[-50,50]},
           'direction':{'type':'string','enum':['up','down','left','right']}}),
 ]

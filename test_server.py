@@ -1,9 +1,11 @@
 """Offline protocol and transaction checks. Does not connect to the phone."""
 import fcntl
 import ast
+import ctypes
 import json
 from pathlib import Path
 import subprocess
+import struct
 import sys
 import tempfile
 import types
@@ -211,7 +213,7 @@ class ScrollDriverTests(unittest.TestCase):
                 driver['record'].assert_not_called()
                 driver['post_wheel_records'].assert_not_called()
 
-    def test_horizontal_scroll_selects_modifier_route_without_priming(self):
+    def test_horizontal_scroll_selects_axis_route_without_priming(self):
         driver = self.driver_main()
         driver['main'](['scroll','50','horizontal'])
         self.assertTrue(driver['post_wheel_records'].call_args.kwargs['horizontal'])
@@ -225,6 +227,26 @@ class ScrollDriverTests(unittest.TestCase):
         self.assertEqual(len(events),2)
         self.assertEqual(namespace['wheel_record'].call_count,2)
         namespace['wheel_record'].assert_called_with('source',50,(1,2),True)
+
+    def test_wheel_record_uses_correct_axis_and_writes_target_point(self):
+        for horizontal, delta in ((False,-50),(False,50),(True,-50),(True,50)):
+            with self.subTest(horizontal=horizontal,delta=delta):
+                buffer = (ctypes.c_uint8 * 0xf8)()
+                struct.pack_into('<I',buffer,4,0xf8)
+                event = object()
+                quartz = Mock(kCGScrollEventUnitPixel=0)
+                quartz.CGEventCreateScrollWheelEvent.return_value = event
+                namespace = {'Q':quartz,'ctypes':ctypes,'struct':struct,
+                    'objc':types.SimpleNamespace(pyobjc_id=lambda e:1),
+                    'EVENT_RECORD_POINTER':lambda e:ctypes.addressof(buffer),
+                    'WHEEL_RECORD_LENGTH':0xf8,'WHEEL_RECORD_LENGTH_OFFSET':4,
+                    'WHEEL_RECORD_POINT_OFFSET':0x10}
+                self.functions({'wheel_record'},namespace)
+                self.assertIs(namespace['wheel_record']('source',delta,(100,200),horizontal),event)
+                axes = (2,0,delta) if horizontal else (1,delta)
+                quartz.CGEventCreateScrollWheelEvent.assert_called_once_with('source',0,*axes)
+                quartz.CGEventSetFlags.assert_not_called()
+                self.assertEqual(struct.unpack_from('<dd',buffer,0x10),(100,200))
 
     def test_scroll_is_disabled_without_explicit_opt_in(self):
         driver = self.driver_main(enabled=False)

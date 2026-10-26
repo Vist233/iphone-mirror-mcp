@@ -8,7 +8,7 @@ The project provides screen reading, taps, text input, Home and Spotlight naviga
 
 It runs locally on the Mac and is not tied to a model or client. It can connect to clients such as Pi and Codex through MCP stdio. Actual Pi calls with a configured DeepSeek Flash provider have been recorded.
 
-> This is an experimental preview, tested on one Mac/iPhone pair. Vertical scrolling has device evidence. Horizontal scrolling and App Switcher are implemented but await device acceptance. Scrolling is off by default. When enabled, it requires an uncovered area of the mirror on the current desktop.
+> This is an experimental preview, tested on one Mac/iPhone pair. Vertical scrolling has device evidence. The user confirmed horizontal movement; exact left/right mapping still awaits validation. App Switcher awaits device acceptance. Scrolling is off by default. When enabled, it requires an uncovered area of the mirror on the current desktop.
 
 ## Capabilities
 
@@ -20,7 +20,8 @@ It runs locally on the Mac and is not tied to a model or client. It can connect 
 | Field replacement and explicit Return | Tested; Return can submit content |
 | Home and Spotlight | Tested |
 | Vertical scrolling (a1) | Device evidence in both directions; off by default |
-| Horizontal scrolling and App Switcher | Implemented; device acceptance pending |
+| Horizontal scrolling | User confirmed the two-axis approach; exact left/right mapping awaits validation |
+| App Switcher | Implemented; device acceptance pending |
 | Long press, dragging, and multi-touch | Not supported |
 
 Some successful actions preserved sampled Mac foreground, keyboard focus, and cursor position. Other trials contained changes. The project cannot guarantee uninterrupted desktop use across all apps or OS versions. See the [validation record](docs/VALIDATION.md).
@@ -114,11 +115,20 @@ Text input never submits automatically. To press Return, call `mirror_input` sep
 | --- | --- |
 | `up` | Content moves up to reveal later items; equivalent to `dy: 50` |
 | `down` | Content moves down to reveal earlier items; equivalent to `dy: -50` |
-| `left` / `right` | Requests content movement left / right; device effect and direction await acceptance |
+| `left` / `right` | Requests content movement left / right; user confirmed horizontal movement, exact mapping awaits validation |
 
 Each call requests a small fixed step. It does not guarantee 50 pixels or one full screen of movement.
 
-Horizontal scrolling adds a Shift flag to the event without pressing a global Shift key. App Switcher uses Command+2. These controls follow [Apple's documentation](https://support.apple.com/en-us/120421). Their background event paths in this project still await device acceptance.
+Horizontal scrolling creates a two-axis event: zero vertical delta and a horizontal delta of ±50, without a Shift flag. The user reported that the previous Shift+vertical-wheel approach still moved vertically. That approach has been replaced. The user confirmed the new two-axis approach on their device. This is not a complete bidirectional or cross-app acceptance result.
+
+Direct CLI calls:
+
+```sh
+MIRROR_ENABLE_EXPERIMENTAL_INPUT=1 ./mirror-driver scroll -50 horizontal
+MIRROR_ENABLE_EXPERIMENTAL_INPUT=1 ./mirror-driver scroll 50 horizontal
+```
+
+App Switcher uses Command+2, as described in [Apple's documentation](https://support.apple.com/en-us/120421). Its background event path in this project still awaits device acceptance.
 
 ## Checking action results
 
@@ -148,7 +158,7 @@ A per-user file lock serializes this MCP server's instances. It cannot coordinat
 python3 -m unittest -v test_server.py
 ```
 
-The current suite has 28 offline tests for the protocol, validation, dispatch, and driver guards. They send no phone input. See the [validation record](docs/VALIDATION.md) for device evidence and pending checks.
+The current suite has 29 offline tests for the protocol, validation, dispatch, and driver guards, including vertical and horizontal delta construction. They send no phone input. See the [validation record](docs/VALIDATION.md) for device evidence and pending checks.
 
 Experiments, screenshots, videos, model sessions, local environments, and private job-search data are not distributed.
 

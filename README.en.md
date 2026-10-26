@@ -14,6 +14,7 @@ The conditions are equally explicit: before input it takes a local screenshot an
 
 Send this line to your AI agent:
 
+> [!TIP]
 > Set up https://github.com/Vist233/iphone-mirror-mcp so I can use it to control my iPhone.
 
 A person does two things: grant permissions (see [Required permissions](#required-permissions)), and connect iPhone Mirroring with the iPhone locked. The rest is the agent's job.

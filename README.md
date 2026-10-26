@@ -14,6 +14,7 @@
 
 把这一句发给你的 AI Agent：
 
+> [!TIP]
 > 按 https://github.com/Vist233/iphone-mirror-mcp 配置好，让我用它操作 iPhone。
 
 人只做两件事：开权限（见[需要哪些权限](#需要哪些权限)）、连上「iPhone 镜像」并锁屏。其余交给 Agent。

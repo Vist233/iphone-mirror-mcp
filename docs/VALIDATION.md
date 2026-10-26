@@ -18,15 +18,21 @@ The measured route posts two bare pixel-wheel records through `SLSPostEventRecor
 
 The saved controlled Settings matrix contains six `a1` actions: three in each direction. All six showed persistent movement of multiple text rows; all six preserved sampled foreground/keyboard focus and five preserved sampled cursor position. Typical movement was about 0.107 of window height, not one full screen.
 
-Across the saved exploratory and matrix summaries, 33 `a1` requests used exactly +/-50: 27 had measured movement and six did not. Boundary effects were suspected for the six, but they must not be removed to advertise a 100% general success rate. A larger-magnitude trial also moved, so the study does not prove a hard magnitude ceiling. The API accepts only the two repeatedly measured presets, -50 and 50.
+Across the saved exploratory and matrix summaries, 33 `a1` requests used exactly +/-50: 27 had measured movement and six did not. Boundary effects were suspected for the six, but they must not be removed to advertise a 100% general success rate. A larger-magnitude trial also moved, so the study does not prove a hard magnitude ceiling. The current API exposes 20, 50, 100, and 200 with either sign, based on the later user report below; these are input presets, not guaranteed pixel distances.
 
 Raw experiment files and OCR landmarks contain personal data and are not part of this repository. The aggregate counts above were recomputed from those local summaries. No return value provides a phone-side acknowledgement; callers must compare observations.
 
 ## Current revision checks
 
-The offline suite has 29 tests. In addition to protocol and transaction checks, it executes the real driver functions with isolated backends to check that a1 does not prime/deactivate the mirror, rejects unmeasured magnitudes and unpublished schemes before input, requires explicit opt-in, posts two records, and stops before posting on focus/coverage changes. It checks consolidated navigation/input routing, explicit Enter validation, four-direction routing, and actual event-constructor arguments for both axes and signs. These are not phone-effect tests.
+The offline suite has 30 tests. In addition to protocol and transaction checks, it executes the real driver functions with isolated backends to check that a1 does not prime/deactivate the mirror, rejects non-preset magnitudes and unpublished schemes before input, requires explicit opt-in, posts two records, and stops before posting on focus/coverage changes. It checks consolidated navigation/input routing, explicit Enter validation, all four magnitudes with either sign on both axes, default magnitude compatibility, ambiguous argument rejection, and actual event-constructor arguments. These are not phone-effect tests.
 
 On 2026-10-26 the maintainer confirmed existing vertical scrolling and requested no more a1 tests. The vertical event path is preserved. The user subsequently reported that Shift+vertical-wheel still moved vertically. A standalone function replaced the event constructor with two axes (vertical delta 0, horizontal delta ±50); the user confirmed success and requested integration. The published driver now uses that constructor. This is user-reported device evidence, not an instrumented regression of the integrated source; exact left/right mapping and repeated bidirectional behavior remain pending. App Switcher Command+2 still awaits device acceptance. The input consolidation forwards to the existing text/key paths.
+
+## User-reported preset evidence (2026-10-26)
+
+The user directly ran a temporary function that changed only the in-memory allowed magnitude while preserving the published driver checks. They reported that 20, 50, 100, and 200 worked, and that horizontal 200 changed pages while 100 did not. At their request, CLI and MCP now expose these four presets. MCP accepts `direction` plus optional positive `magnitude` (default 50), or signed vertical `dy` alone. No arbitrary values are exposed by the public tool.
+
+Earlier assistant-controlled trials on the Settings top screen recorded no measurable displacement for +20, -20, -50, and +100; those attempts are not counted as passes or used to infer preset thresholds. The later user report is separate evidence, not a replacement for those records. There is no measured response curve, universal page threshold, or complete cross-app/bidirectional acceptance result. Detailed raw trials remain private.
 
 ## Remaining gates
 

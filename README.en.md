@@ -10,19 +10,16 @@ It runs locally on the Mac and is not tied to a model or client. It can connect 
 
 > This is an experimental preview, tested on one Mac/iPhone pair. Vertical scrolling has device evidence. The user confirmed horizontal movement; exact left/right mapping still awaits validation. App Switcher awaits device acceptance. Scrolling is off by default. When enabled, it requires an uncovered area of the mirror on the current desktop.
 
-## Capabilities
+## Conditions for use
 
-| Feature | Current status |
-| --- | --- |
-| Screenshots and local OCR | Tested; no native iPhone UI tree |
-| Coordinate and text-based taps | Device evidence exists; inspect the result |
-| English, digits, Chinese, and emoji input | Tested; emoji were checked in screenshots |
-| Field replacement and explicit Return | Tested; Return can submit content |
-| Home and Spotlight | Tested |
-| Vertical scrolling (a1) | Device evidence in both directions; off by default |
-| Horizontal scrolling | User confirmed the two-axis approach; exact left/right mapping awaits validation |
-| App Switcher | Implemented; device acceptance pending |
-| Long press, dragging, and multi-touch | Not supported |
+- Use a Mac that supports iPhone Mirroring and a paired iPhone. Connect manually and keep the iPhone locked.
+- **Both vertical and horizontal scrolling require a visible mirror** on the current desktop. It must not be minimized, hidden, or fully covered. It does not need to be the foreground app.
+- The implementation checks three candidate points on the window's center line. At least one must be uncovered. An exposed window edge alone may not suffice.
+- If no candidate is available, the driver reports an error without sending wheel events. It stops further submission if the target point, Mac foreground, or keyboard focus changes. Previously submitted events may still take effect.
+- The host application needs screen recording and Accessibility permissions, as described below.
+- Use only one phone driver at a time. Check the fresh screenshot or OCR after each action.
+
+Vertical scrolling has device evidence, and the user confirmed horizontal movement. Exact left/right mapping and App Switcher await acceptance. Long press, dragging, and multi-touch are not supported.
 
 Some successful actions preserved sampled Mac foreground, keyboard focus, and cursor position. Other trials contained changes. The project cannot guarantee uninterrupted desktop use across all apps or OS versions. See the [validation record](docs/VALIDATION.md).
 
@@ -44,15 +41,22 @@ iPhone
 
 The driver operates the mirror on the Mac. It does not connect directly to an iPhone control protocol. Screenshots and Apple Vision OCR provide observations. No model API is required at runtime.
 
-## Prerequisites
+## Required permissions
 
-1. Use a Mac that supports iPhone Mirroring and a paired iPhone.
-2. Connect the mirror manually and confirm the phone screen is visible.
-3. Keep the iPhone locked.
-4. Grant the host application the required Accessibility and screen recording permissions.
-5. For scrolling, keep an area of the mirror uncovered on the current desktop.
+In macOS System Settings → Privacy & Security, enable these permissions for the application that actually launches the tool:
 
-The user handles connection, authentication, Face ID, and other intervention prompts. Use only one phone driver at a time.
+| Permission | Purpose |
+| --- | --- |
+| Screen Recording / Screen & System Audio Recording | Capture the mirror for OCR and image observation; this project does not capture audio |
+| Accessibility / related device-control permission | Read the mirror's accessibility state and submit taps, keyboard input, and wheel events |
+
+Names vary by macOS version and language. When launching from Terminal or iTerm, check that terminal's permissions. When launching from Codex or another MCP client, check that client. Follow the responsible application named by macOS; permission for iPhone Mirroring alone is insufficient.
+
+After changing permissions, quit and reopen the host if macOS requests it. The driver checks event-posting permission. The `trusted_post_event` field from `info` is not a complete permissions check. Use `read` to check capture and OCR as well.
+
+Published code does not monitor global keyboard or wheel input, so Input Monitoring is not a runtime requirement. Full Disk Access, microphone access, and Apple Events Automation are not required by the current implementation. The user handles connection, authentication, and Face ID prompts.
+
+See Apple's instructions for [Accessibility](https://support.apple.com/en-euro/guide/mac-help/mh43185/27/mac/27) and [screen recording](https://support.apple.com/en-gb/guide/mac-help/mchl592e5686/mac).
 
 ## Installation
 
@@ -68,7 +72,62 @@ The MCP server uses only the Python standard library. The driver requires PyObjC
 
 The launcher uses the project's `.venv/bin/python` by default. Set `MIRROR_PYTHON` to select another interpreter. The launcher does not automatically select a named pyenv environment. Fresh installation on another Mac remains unverified.
 
-## MCP configuration
+## Three ways to call the project
+
+The three modes share a driver but have different entry points and current return values. The following examples describe existing behavior. Future output design is in the [interface draft (Chinese)](docs/INTERFACE-DESIGN.md).
+
+### Terminal / CLI
+
+Run commands in the project directory. `info` checks the window, focus, and event-posting permission without phone input. `read` saves a screenshot and returns OCR.
+
+```sh
+./mirror-driver info
+./mirror-driver read /tmp/iphone-mirror-read.png
+./mirror-driver capture /tmp/iphone-mirror-capture.png
+```
+
+Run only the required action after checking the phone screen:
+
+```sh
+./mirror-driver home
+./mirror-driver spotlight
+./mirror-driver app_switcher
+./mirror-driver tap 0.5 0.5
+./mirror-driver text '你好，iPhone'
+./mirror-driver text '替换内容' replace
+./mirror-driver type 'Hello'
+```
+
+`text` uses Unicode. `type` uses physical English-layout keycodes. Focus the field first. Run `./mirror-driver key return` only when submission is intended and authorized.
+
+Scrolling currently requires the experimental flag. Presets are 20, 50, 100, and 200, with either sign. These examples request a small vertical step and a horizontal page action. Reverse the sign for the opposite direction:
+
+```sh
+MIRROR_ENABLE_EXPERIMENTAL_INPUT=1 ./mirror-driver scroll -20
+MIRROR_ENABLE_EXPERIMENTAL_INPUT=1 ./mirror-driver scroll -200 horizontal
+```
+
+The CLI currently prints one JSON object to stdout and exits with code 1 on failure. It has no concise human-readable format. Actions do not automatically return subsequent OCR; call `read` separately. Direct driver calls also bypass the MCP transaction lock.
+
+### Code mode / composing calls in code
+
+There is no dedicated code-mode SDK. Python can call the existing `server.call()` from the project directory. This is an internal entry point without a stable API commitment. It preserves the device transaction lock and observes after actions. The `server` module requires no MCP Python SDK.
+
+```sh
+.venv/bin/python - <<'PY'
+import json
+from server import call
+
+content = call('mirror_observe', {'image': False})
+for item in content:
+    if item['type'] == 'text':
+        print(json.dumps(json.loads(item['text']), ensure_ascii=False, indent=2))
+PY
+```
+
+The return value is currently a list of MCP content items. JSON inside text items needs another parsing step. This is not a dedicated object API. Scroll calls still require the experimental flag in the process environment.
+
+### MCP / client tool calls
 
 Replace the paths with absolute paths to your checkout. This example explicitly enables experimental scrolling. Omit `MIRROR_ENABLE_EXPERIMENTAL_INPUT` to leave scrolling disabled.
 
@@ -89,6 +148,22 @@ Replace the paths with absolute paths to your checkout. This example explicitly 
 
 Configuration locations vary by client. The example above uses a common format. Pi can use the project's `.pi/mcp.json`. Check the connection with `pi mcp list --json`. Pi's built-in MCP extension must be enabled. With `--no-extensions`, explicitly include `--extension builtin:mcp`.
 
+A client sends a `tools/call` request, for example:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "mirror_observe",
+    "arguments": {"image": false}
+  }
+}
+```
+
+This is an MCP protocol request, not a shell command. `server.py` uses stdin/stdout for JSON-RPC; human-readable prompts must not appear on stdout. MCP currently returns text/image content. Submitted actions append OCR, and observation failures preserve the submission report.
+
 ## Tools
 
 | Tool | Arguments and purpose |
@@ -99,7 +174,15 @@ Configuration locations vary by client. The example above uses a common format. 
 | `mirror_tap_text` | `text` is a substring that must match exactly one OCR item |
 | `mirror_navigate` | `destination`: `home`, `spotlight`, or `app_switcher` |
 | `mirror_input` | `action: text` with `text`, optional `mode: unicode/ascii` and `replace`; or `action: enter` alone |
-| `mirror_scroll` | Exactly one of `direction: up/down/left/right` or legacy `dy: -50/50` |
+| `mirror_scroll` | `direction: up/down/left/right`, optional `magnitude: 20/50/100/200` (default 50); or vertical legacy `dy` alone, using either sign of these presets |
+
+For example, an MCP horizontal page tool call is:
+
+```json
+{"name":"mirror_scroll","arguments":{"direction":"left","magnitude":200}}
+```
+
+This is a tool name and arguments, not a shell command. Legacy `dy` cannot be combined with `direction` or `magnitude`. Code-mode `server.call()` uses the same tool arguments.
 
 Version 0.3.0 consolidates five previous navigation and input tools into `mirror_navigate` and `mirror_input`. Refresh the client's tool list after upgrading and update old calls.
 
@@ -117,18 +200,36 @@ Text input never submits automatically. To press Return, call `mirror_input` sep
 | `down` | Content moves down to reveal earlier items; equivalent to `dy: -50` |
 | `left` / `right` | Requests content movement left / right; user confirmed horizontal movement, exact mapping awaits validation |
 
-Each call requests a small fixed step. It does not guarantee 50 pixels or one full screen of movement.
+### What does 50 mean?
 
-Horizontal scrolling creates a two-axis event: zero vertical delta and a horizontal delta of ±50, without a Shift flag. The user reported that the previous Shift+vertical-wheel approach still moved vertically. That approach has been replaced. The user confirmed the new two-axis approach on their device. This is not a complete bidirectional or cross-app acceptance result.
+`50` is the signed delta passed to a Core Graphics wheel event using pixel units. It is not a phone coordinate or measured content displacement. The sign selects event direction. All four presets use the same construction: `(deltaY=±magnitude)` vertically and `(deltaY=0, deltaX=±magnitude)` horizontally.
 
-Direct CLI calls:
+Each request sends two equal-delta events about 40ms apart. It guarantees neither 50 nor 100 pixels of phone content movement. Mirroring conversion, the target app, list boundaries, and page snapping affect the result.
 
-```sh
-MIRROR_ENABLE_EXPERIMENTAL_INPUT=1 ./mirror-driver scroll -50 horizontal
-MIRROR_ENABLE_EXPERIMENTAL_INPUT=1 ./mirror-driver scroll 50 horizontal
-```
+The CLI and MCP accept four magnitudes: 20, 50, 100, and 200. They are not physical maxima derived from screen dimensions. The user reports all four work on their setup, and **horizontal 200 flips a page while 100 does not**. This threshold is not guaranteed on other devices, apps, or window sizes. No instrumented displacement dataset for all four presets was collected in this revision.
+
+| Magnitude | Suggested use |
+| --- | --- |
+| 20 | Smaller input step; a starting point for fine adjustment near a target |
+| 50 | Existing default when MCP `magnitude` is omitted |
+| 100 | Larger input step; user reports it is insufficient for horizontal page changes |
+| 200 | User reports horizontal page changes; inspect the screen for vertical displacement |
+
+For “half a screen” or “one screen,” an upper-level interface should express a fraction of the visible content area. Vertical actions refer to content height; horizontal actions refer to width, excluding window chrome. Event delta needs measured calibration to content movement. It cannot be assumed equal. Drag endpoints are constrained by screen geometry, but this project sends wheel events.
+
+Our proposal is to target about 0.7 of the visible area for ordinary lists, preserving context overlap. Near a target, use smaller steps and inspect observations. This is a design proposal awaiting implementation and calibration, not an Apple rule or an existing `amount` parameter. Use the four presets for now; paged interfaces still need page-change checks.
+
+See Apple's definitions of [scroll units](https://developer.apple.com/documentation/coregraphics/cgscrolleventunit) and the [event constructor](https://developer.apple.com/documentation/coregraphics/cgeventcreatescrollwheelevent).
+
+Horizontal scrolling creates a two-axis event: zero vertical delta and the selected signed horizontal magnitude, without a Shift flag. The user reported that the previous Shift+vertical-wheel approach still moved vertically. That approach has been replaced. The user confirmed the two-axis approach and page changes with 200. This is not a complete bidirectional or cross-app acceptance result.
 
 App Switcher uses Command+2, as described in [Apple's documentation](https://support.apple.com/en-us/120421). Its background event path in this project still awaits device acceptance.
+
+### Keep the experimental flag?
+
+`MIRROR_ENABLE_EXPERIMENTAL_INPUT=1` is an early input-route gate, not permission to scroll an invisible mirror. It never bypasses the visibility check.
+
+We propose removing this explicit flag from routine use of the integrated scroll route. Execute only when conditions hold; otherwise return an error that explains non-execution. Do not silently skip or report success. Preserve checks before each event and reject unsupported input routes. This revision only documents the proposal; the flag remains in code and examples.
 
 ## Checking action results
 
@@ -158,7 +259,7 @@ A per-user file lock serializes this MCP server's instances. It cannot coordinat
 python3 -m unittest -v test_server.py
 ```
 
-The current suite has 29 offline tests for the protocol, validation, dispatch, and driver guards, including vertical and horizontal delta construction. They send no phone input. See the [validation record](docs/VALIDATION.md) for device evidence and pending checks.
+The current suite has 30 offline tests for the protocol, validation, dispatch, and driver guards, including all four signed presets, both axes, and delta construction. They send no phone input. See the [validation record](docs/VALIDATION.md) for device evidence and pending checks.
 
 Experiments, screenshots, videos, model sessions, local environments, and private job-search data are not distributed.
 

@@ -51,15 +51,15 @@ class ProtocolTests(unittest.TestCase):
                 self.assertTrue(result['result']['isError'])
                 driver.assert_not_called()
 
-    def test_scroll_forwards_one_page_request(self):
+    def test_scroll_forwards_signed_presets(self):
         with patch.object(server,'run',return_value={'ok':True}) as driver, patch.object(server,'observe',return_value=([],[])):
-            for dy in (-50,50):
+            for dy in (-200,-100,-50,-20,20,50,100,200):
                 with self.subTest(dy=dy):
                     driver.reset_mock()
                     server.call('mirror_scroll',{'dy':dy})
                     driver.assert_called_once_with('scroll',dy)
 
-    def test_scroll_rejects_magnitude_outside_one_page(self):
+    def test_scroll_rejects_non_presets(self):
         with patch.object(server,'run') as driver:
             for dy in (-51,51,-2000,2000,0,-1,1,-49,49):
                 with self.subTest(dy=dy):
@@ -100,7 +100,16 @@ class ProtocolTests(unittest.TestCase):
             for direction, expected in [('up',('scroll',50)),('down',('scroll',-50)),('left',('scroll',50,'horizontal')),('right',('scroll',-50,'horizontal'))]:
                 server.call('mirror_scroll',{'direction':direction})
                 driver.assert_called_with(*expected)
-            for arguments in ({},{'dy':50,'direction':'left'}):
+            for direction in ('up','down','left','right'):
+                for magnitude in (20,50,100,200):
+                    driver.reset_mock()
+                    server.call('mirror_scroll',{'direction':direction,'magnitude':magnitude})
+                    delta = magnitude if direction in ('up','left') else -magnitude
+                    extra = ('horizontal',) if direction in ('left','right') else ()
+                    driver.assert_called_once_with('scroll',delta,*extra)
+            for arguments in ({},{'dy':50,'direction':'left'},{'magnitude':200},
+                              {'dy':50,'magnitude':200},{'direction':'left','magnitude':0},
+                              {'direction':'up','magnitude':100.0},{'direction':'up','magnitude':True}):
                 with self.assertRaises(ValueError):
                     server.call('mirror_scroll',arguments)
 
@@ -189,7 +198,7 @@ class ScrollDriverTests(unittest.TestCase):
             'time': types.SimpleNamespace(sleep=lambda delay: None),
             'prime': Mock(), 'record': Mock(),
             'post_wheel_records': Mock(return_value=[0, 0]),
-            'MAX_WHEEL_MAGNITUDE': 50, 'DEFAULT_SCHEME': 'a1',
+            'SCROLL_MAGNITUDES': (20,50,100,200), 'DEFAULT_SCHEME': 'a1',
             'WHEEL_RECORD_SETTLE_SECONDS': .65,
         }
         return self.functions({'main'}, namespace)
@@ -202,6 +211,16 @@ class ScrollDriverTests(unittest.TestCase):
         self.assertEqual(result['record_statuses'], [0, 0])
         self.assertFalse(result['phone_effect_verified'])
         self.assertEqual(driver['post_wheel_records'].call_args.args[2], 50)
+
+    def test_all_public_presets_reach_driver_for_both_axes(self):
+        for delta in (-200,-100,-50,-20,20,50,100,200):
+            for horizontal in (False,True):
+                with self.subTest(delta=delta,horizontal=horizontal):
+                    driver = self.driver_main()
+                    driver['main'](['scroll',str(delta)]+(['horizontal'] if horizontal else []))
+                    self.assertEqual(driver['post_wheel_records'].call_args.args[2],delta)
+                    self.assertEqual(driver['post_wheel_records'].call_args.kwargs.get('horizontal',False),horizontal)
+                    driver['prime'].assert_not_called()
 
     def test_invalid_scroll_does_not_send_or_prime(self):
         for value in ('0', '1', '-49', '51', '2000'):
@@ -229,7 +248,8 @@ class ScrollDriverTests(unittest.TestCase):
         namespace['wheel_record'].assert_called_with('source',50,(1,2),True)
 
     def test_wheel_record_uses_correct_axis_and_writes_target_point(self):
-        for horizontal, delta in ((False,-50),(False,50),(True,-50),(True,50)):
+        for horizontal, delta in ((horizontal,delta) for horizontal in (False,True)
+                                  for delta in (-200,-100,-50,-20,20,50,100,200)):
             with self.subTest(horizontal=horizontal,delta=delta):
                 buffer = (ctypes.c_uint8 * 0xf8)()
                 struct.pack_into('<I',buffer,4,0xf8)

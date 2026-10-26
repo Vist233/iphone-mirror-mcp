@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from scroll_presets import SCROLL_MAGNITUDES, SIGNED_SCROLL_DELTAS, DEFAULT_SCROLL_MAGNITUDE
 
 ROOT = Path(__file__).resolve().parent
 DRIVER = os.environ.get('MR_MIRRORCTL', str(ROOT/'mirror-driver'))
@@ -47,8 +48,9 @@ TOOLS = [
     tool('mirror_input', 'Input into a focused phone field. action=text uses Unicode by default; mode=ascii uses English-layout physical keys. replace=true replaces text. action=enter explicitly presses Return and may submit a message or form; use only with user authorization and a verified target. Text never implicitly submits.',
          {'action':{'type':'string','enum':['text','enter']}, 'text':{'type':'string','maxLength':200},
           'mode':{'type':'string','enum':['unicode','ascii']}, 'replace':{'type':'boolean'}}, ['action']),
-    tool('mirror_scroll', 'Experimental bounded scroll; disabled unless MIRROR_ENABLE_EXPERIMENTAL_INPUT=1. Provide direction (intended content movement: up/down/left/right) OR legacy dy (-50 earlier, +50 later). Horizontal uses axis 2 with zero vertical delta; user confirmed movement, exact left/right mapping still awaits validation. Requires an uncovered mirror point. Inspect the returned observation; do not retry automatically.',
-         {'dy':{'type':'integer','enum':[-50,50]},
+    tool('mirror_scroll', 'Bounded scroll; requires MIRROR_ENABLE_EXPERIMENTAL_INPUT=1 and a visible uncovered mirror point. Provide direction plus optional magnitude (20/50/100/200, default 50), OR signed legacy dy for vertical scrolling. direction describes intended content movement. User reports horizontal 200 flips a page while 100 does not on their setup; not a universal threshold. Inspect the observation; do not retry automatically.',
+         {'dy':{'type':'integer','enum':list(SIGNED_SCROLL_DELTAS)},
+          'magnitude':{'type':'integer','enum':list(SCROLL_MAGNITUDES),'default':DEFAULT_SCROLL_MAGNITUDE},
           'direction':{'type':'string','enum':['up','down','left','right']}}),
 ]
 
@@ -110,8 +112,12 @@ def validate(name, arguments):
             raise ValueError('text is required for action=text.')
         elif any(ord(c)<32 or ord(c)==127 for c in arguments['text']):
             raise ValueError('Control characters are disabled; typing never implicitly submits.')
-    if name == 'mirror_scroll' and len(arguments) != 1:
-        raise ValueError('Provide exactly one of dy or direction.')
+    if name == 'mirror_scroll':
+        if 'dy' in arguments:
+            if set(arguments) != {'dy'}:
+                raise ValueError('dy cannot be combined with direction or magnitude.')
+        elif 'direction' not in arguments:
+            raise ValueError('Provide direction with optional magnitude, or dy alone.')
 
 def call(name, arguments):
     with device_transaction():
@@ -143,7 +149,8 @@ def call_locked(name, arguments):
             result = run('scroll',arguments['dy'])
         else:
             direction = arguments['direction']
-            delta = 50 if direction in ('up','left') else -50
+            magnitude = arguments.get('magnitude',DEFAULT_SCROLL_MAGNITUDE)
+            delta = magnitude if direction in ('up','left') else -magnitude
             result = run('scroll',delta,*(['horizontal'] if direction in ('left','right') else []))
     else:
         raise ValueError('Unknown tool.')
@@ -172,7 +179,7 @@ def response(request):
     if method == 'initialize':
         version = params.get('protocolVersion')
         return dict(envelope,result={'protocolVersion':version if version in VERSIONS else VERSIONS[0],
-                                    'capabilities':{'tools':{}}, 'serverInfo':{'name':'iphone-mirror-local','version':'0.3.0'}})
+                                    'capabilities':{'tools':{}}, 'serverInfo':{'name':'iphone-mirror-local','version':'0.3.1'}})
     if method == 'ping':
         return dict(envelope,result={})
     if method == 'tools/list':

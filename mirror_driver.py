@@ -21,6 +21,7 @@ import ApplicationServices as AX
 import Quartz as Q
 import Vision
 from Foundation import NSURL
+from scroll_presets import SCROLL_MAGNITUDES
 
 SKY = ctypes.CDLL('/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight')
 AS = ctypes.CDLL('/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices')
@@ -56,9 +57,7 @@ WHEEL_RECORD_COUNT = 2
 WHEEL_RECORD_INTERVAL_SECONDS = 0.04
 WHEEL_RECORD_SETTLE_SECONDS = 0.65
 
-# Only +/-50 was repeatedly measured. Treat each request as a bounded step;
-# do not infer a proportional distance or a magnitude ceiling from that study.
-MAX_WHEEL_MAGNITUDE = 50
+# Public magnitudes are shared with MCP; they are input presets, not screen distances.
 
 def target():
     apps = AppKit.NSRunningApplication.runningApplicationsWithBundleIdentifier_('com.apple.ScreenContinuity')
@@ -308,6 +307,7 @@ def main(arguments):
                                 'navigation_keys':['return','enter'],
                                 'app_switcher':'implemented_device_validation_pending',
                                 'horizontal_scroll':'axis2_user_confirmed_direction_mapping_pending',
+                                'scroll_magnitudes':list(SCROLL_MAGNITUDES),
                                 'scroll':('experimental_a1_enabled' if os.environ.get('MIRROR_ENABLE_EXPERIMENTAL_INPUT') == '1' else 'disabled_by_default')}}
     if command in ('capture', 'read'):
         path = args[0]
@@ -336,8 +336,8 @@ def main(arguments):
         if len(args) not in (1,2) or (len(args)==2 and args[1]!='horizontal'):
             raise ValueError('scroll accepts delta and optional horizontal.')
         delta = int(args[0])
-        if delta not in (-MAX_WHEEL_MAGNITUDE, MAX_WHEEL_MAGNITUDE):
-            raise ValueError('Scroll dy must be -50 or 50; only these steps were measured.')
+        if abs(delta) not in SCROLL_MAGNITUDES:
+            raise ValueError('Scroll magnitude must be one of 20, 50, 100, 200; use either sign.')
         scheme_name = os.environ.get('MIRROR_SCROLL_SCHEME', DEFAULT_SCHEME)
         if scheme_name != DEFAULT_SCHEME:
             raise ValueError('Only MIRROR_SCROLL_SCHEME=a1 is published; other schemes remain local research.')

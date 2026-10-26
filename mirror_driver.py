@@ -212,11 +212,11 @@ def uncovered_point(window_id, bounds):
 DEFAULT_SCHEME = 'a1'
 
 
-def build_plain_wheel(source, dy, point):
-    return [wheel_record(source, dy, point) for _ in range(WHEEL_RECORD_COUNT)]
+def build_plain_wheel(source, dy, point, horizontal=False):
+    return [wheel_record(source, dy, point, horizontal) for _ in range(WHEEL_RECORD_COUNT)]
 
 
-def wheel_record(source, delta, point):
+def wheel_record(source, delta, point, horizontal=False):
     """Build one pixel-wheel record aimed at a point inside the mirror.
 
     The returned event owns the record's memory, so the caller must keep it
@@ -225,6 +225,9 @@ def wheel_record(source, delta, point):
     event = Q.CGEventCreateScrollWheelEvent(source, Q.kCGScrollEventUnitPixel, 1, delta)
     if event is None:
         raise RuntimeError('Scroll event creation failed.')
+    if horizontal:
+        # Apple's documented Shift+wheel route; no global modifier key is pressed.
+        Q.CGEventSetFlags(event, Q.kCGEventFlagMaskShift)
     record = EVENT_RECORD_POINTER(objc.pyobjc_id(event))
     if not record:
         raise RuntimeError('Scroll event produced no record.')
@@ -237,7 +240,7 @@ def wheel_record(source, delta, point):
     return event
 
 
-def post_wheel_records(window_id, bounds, dy, before, scheme_name=DEFAULT_SCHEME):
+def post_wheel_records(window_id, bounds, dy, before, scheme_name=DEFAULT_SCHEME, horizontal=False):
     """Post the scroll records, aborting if Mac focus or coverage changes.
 
     Returns the per-record WindowServer status codes.
@@ -247,7 +250,7 @@ def post_wheel_records(window_id, bounds, dy, before, scheme_name=DEFAULT_SCHEME
     point = uncovered_point(window_id, bounds)
     source = Q.CGEventSourceCreate(1)
     connection = WINDOW_SERVER_CONNECTION()
-    events = build_plain_wheel(source, dy, point)
+    events = build_plain_wheel(source, dy, point, horizontal) if horizontal else build_plain_wheel(source, dy, point)
     statuses = []
     for event in events:
         current = focus_state()
@@ -303,6 +306,8 @@ def main(arguments):
                 'capabilities':{'capture':True, 'ocr':True, 'tap':'partial_device_verification',
                                 'ascii_type':'enabled_physical_keys_english_layout', 'unicode_type':True,
                                 'navigation_keys':['return','enter'],
+                                'app_switcher':'implemented_device_validation_pending',
+                                'horizontal_scroll':'shift_wheel_device_validation_pending',
                                 'scroll':('experimental_a1_enabled' if os.environ.get('MIRROR_ENABLE_EXPERIMENTAL_INPUT') == '1' else 'disabled_by_default')}}
     if command in ('capture', 'read'):
         path = args[0]
@@ -321,20 +326,22 @@ def main(arguments):
     if not rows or any(message in visible for message in blocked):
         raise RuntimeError('Mirror not ready or screen unreadable; reconnect manually. No event sent.')
     verified_key = command == 'key' and args in (['return'], ['enter'])
-    if command not in ('tap', 'home', 'spotlight', 'type', 'text') and not verified_key and os.environ.get('MIRROR_ENABLE_EXPERIMENTAL_INPUT') != '1':
+    if command not in ('tap', 'home', 'spotlight', 'app_switcher', 'type', 'text') and not verified_key and os.environ.get('MIRROR_ENABLE_EXPERIMENTAL_INPUT') != '1':
         raise RuntimeError('This input route has not passed noninterference verification and is disabled.')
     if command == 'type' and (len(args[0])>200 or any(c.lower() not in KEYS for c in args[0])):
         raise ValueError('Unsupported physical key. Use the Unicode text command for non-ASCII text.')
     if command == 'text' and (len(args[0])>200 or any(ord(c)<32 or ord(c)==127 for c in args[0])):
         raise ValueError('Text must be <=200 characters without control characters; no implicit Return/submit.')
     if command == 'scroll':
+        if len(args) not in (1,2) or (len(args)==2 and args[1]!='horizontal'):
+            raise ValueError('scroll accepts delta and optional horizontal.')
         delta = int(args[0])
         if delta not in (-MAX_WHEEL_MAGNITUDE, MAX_WHEEL_MAGNITUDE):
             raise ValueError('Scroll dy must be -50 or 50; only these steps were measured.')
         scheme_name = os.environ.get('MIRROR_SCROLL_SCHEME', DEFAULT_SCHEME)
         if scheme_name != DEFAULT_SCHEME:
             raise ValueError('Only MIRROR_SCROLL_SCHEME=a1 is published; other schemes remain local research.')
-    needs_priming = command not in ('home', 'spotlight', 'scroll')
+    needs_priming = command not in ('home', 'spotlight', 'app_switcher', 'scroll')
     was_active = internal_active(pid)
     samples = [before]
     stop_monitor = threading.Event()
@@ -362,8 +369,8 @@ def main(arguments):
                 time.sleep(0.06)
             finally:
                 record(pid, window_id, 2, point=point)
-        elif command in ('home', 'spotlight'):
-            code = 18 if command == 'home' else 20
+        elif command in ('home', 'spotlight', 'app_switcher'):
+            code = {'home':18, 'app_switcher':19, 'spotlight':20}[command]
             held = []
             try:
                 for key in (55, code):
@@ -393,7 +400,10 @@ def main(arguments):
                 raise ValueError('Unsupported key or modifier.')
             chord(pid, window_id, code, args[1:])
         elif command == 'scroll':
-            statuses = post_wheel_records(window_id, bounds, delta, before, scheme_name)
+            if len(args)==2:
+                statuses = post_wheel_records(window_id, bounds, delta, before, scheme_name, horizontal=True)
+            else:
+                statuses = post_wheel_records(window_id, bounds, delta, before, scheme_name)
             time.sleep(WHEEL_RECORD_SETTLE_SECONDS)
         else:
             raise ValueError('Unsupported command; no foreground fallback.')

@@ -42,16 +42,14 @@ TOOLS = [
          {'x':{'type':'number','minimum':0,'exclusiveMaximum':1}, 'y':{'type':'number','minimum':0,'exclusiveMaximum':1}}, ['x','y']),
     tool('mirror_tap_text', 'Tap one unique visible OCR text match. Fails on zero or multiple matches. Re-read the result.',
          {'text':{'type':'string','minLength':1}}, ['text']),
-    tool('mirror_home', 'Return to phone Home with the tested app-level shortcut, then observe.'),
-    tool('mirror_spotlight', 'Open phone Spotlight with the tested app-level shortcut, then observe. Type an app name and inspect results before tapping its icon.'),
-    tool('mirror_type_ascii', 'Type through physical ASCII keycodes into the focused phone field (English keyboard layout). Tap the field first. replace=true selects and replaces its text. Returns OCR to verify exact input; Chinese/emoji are unsupported.',
-         {'text':{'type':'string','maxLength':200}, 'replace':{'type':'boolean'}}, ['text']),
-    tool('mirror_type', 'Type Unicode text into the focused phone field, including Chinese and emoji. Tap the field first; replace=true replaces existing text. No clipboard change or implicit Return/submit. Verify via OCR or image; emoji and icons may be misread by OCR.',
-         {'text':{'type':'string','maxLength':200}, 'replace':{'type':'boolean'}}, ['text']),
-    tool('mirror_key', 'Send one navigation/edit key to the focused phone field. Return/Enter may submit a search or message: use only when the user authorized that action and the target page is verified.',
-         {'key':{'type':'string','enum':['return','enter']}}, ['key']),
-    tool('mirror_scroll', 'Experimental a1 bounded scroll step; disabled unless MIRROR_ENABLE_EXPERIMENTAL_INPUT=1. Negative dy moves toward earlier items, positive toward later items on the tested setup. Requires an uncovered mirror point. Inspect the returned observation; no movement is ambiguous and must not trigger an automatic retry.',
-         {'dy':{'type':'integer','enum':[-50,50]}}, ['dy']),
+    tool('mirror_navigate', 'Open phone Home, Spotlight, or App Switcher (recent apps), then observe. Inspect Spotlight results before opening an app.',
+         {'destination':{'type':'string','enum':['home','spotlight','app_switcher']}}, ['destination']),
+    tool('mirror_input', 'Input into a focused phone field. action=text uses Unicode by default; mode=ascii uses English-layout physical keys. replace=true replaces text. action=enter explicitly presses Return and may submit a message or form; use only with user authorization and a verified target. Text never implicitly submits.',
+         {'action':{'type':'string','enum':['text','enter']}, 'text':{'type':'string','maxLength':200},
+          'mode':{'type':'string','enum':['unicode','ascii']}, 'replace':{'type':'boolean'}}, ['action']),
+    tool('mirror_scroll', 'Experimental bounded scroll; disabled unless MIRROR_ENABLE_EXPERIMENTAL_INPUT=1. Provide direction (content movement: up/down/left/right) OR legacy dy (-50 earlier, +50 later). Horizontal uses Shift+wheel and still needs device validation. Requires an uncovered mirror point. Inspect the returned observation; do not retry automatically.',
+         {'dy':{'type':'integer','enum':[-50,50]},
+          'direction':{'type':'string','enum':['up','down','left','right']}}),
 ]
 
 def run(*arguments):
@@ -104,8 +102,16 @@ def validate(name, arguments):
                 raise ValueError(f'{key} must be an integer.')
             if value<specification.get('minimum',-math.inf) or value>specification.get('maximum',math.inf) or value>=specification.get('exclusiveMaximum',math.inf):
                 raise ValueError(f'{key} outside allowed range.')
-    if name in ('mirror_type','mirror_type_ascii') and any(ord(c)<32 or ord(c)==127 for c in arguments['text']):
-        raise ValueError('Control characters are disabled; typing never implicitly submits.')
+    if name == 'mirror_input':
+        if arguments['action'] == 'enter':
+            if set(arguments) != {'action'}:
+                raise ValueError('enter accepts only action; text options must be omitted.')
+        elif 'text' not in arguments:
+            raise ValueError('text is required for action=text.')
+        elif any(ord(c)<32 or ord(c)==127 for c in arguments['text']):
+            raise ValueError('Control characters are disabled; typing never implicitly submits.')
+    if name == 'mirror_scroll' and len(arguments) != 1:
+        raise ValueError('Provide exactly one of dy or direction.')
 
 def call(name, arguments):
     with device_transaction():
@@ -125,16 +131,20 @@ def call_locked(name, arguments):
         result = run('tap',matches[0]['x'],matches[0]['y'])
     elif name == 'mirror_tap':
         result = run('tap',arguments['x'],arguments['y'])
-    elif name == 'mirror_home':
-        result = run('home')
-    elif name == 'mirror_spotlight':
-        result = run('spotlight')
-    elif name in ('mirror_type_ascii','mirror_type'):
-        result = run('type' if name=='mirror_type_ascii' else 'text',arguments['text'],*(['replace'] if arguments.get('replace',False) else []))
-    elif name == 'mirror_key':
-        result = run('key',arguments['key'])
+    elif name == 'mirror_navigate':
+        result = run(arguments['destination'])
+    elif name == 'mirror_input':
+        if arguments['action'] == 'enter':
+            result = run('key','return')
+        else:
+            result = run('type' if arguments.get('mode')=='ascii' else 'text',arguments['text'],*(['replace'] if arguments.get('replace',False) else []))
     elif name == 'mirror_scroll':
-        result = run('scroll',arguments['dy'])
+        if 'dy' in arguments:
+            result = run('scroll',arguments['dy'])
+        else:
+            direction = arguments['direction']
+            delta = 50 if direction in ('up','left') else -50
+            result = run('scroll',delta,*(['horizontal'] if direction in ('left','right') else []))
     else:
         raise ValueError('Unknown tool.')
     content = [{'type':'text','text':json.dumps(result,ensure_ascii=False)}]
@@ -162,7 +172,7 @@ def response(request):
     if method == 'initialize':
         version = params.get('protocolVersion')
         return dict(envelope,result={'protocolVersion':version if version in VERSIONS else VERSIONS[0],
-                                    'capabilities':{'tools':{}}, 'serverInfo':{'name':'iphone-mirror-local','version':'0.2.1'}})
+                                    'capabilities':{'tools':{}}, 'serverInfo':{'name':'iphone-mirror-local','version':'0.3.0'}})
     if method == 'ping':
         return dict(envelope,result={})
     if method == 'tools/list':

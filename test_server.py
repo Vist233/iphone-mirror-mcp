@@ -71,6 +71,37 @@ class ProtocolTests(unittest.TestCase):
             self.assertTrue(result['result']['isError'])
             driver.assert_not_called()
 
+    def test_consolidated_navigation(self):
+        with patch.object(server,'run',return_value={'ok':True}) as driver, patch.object(server,'observe',return_value=([],[])):
+            for destination in ('home','spotlight','app_switcher'):
+                server.call('mirror_navigate',{'destination':destination})
+                driver.assert_called_with(destination)
+
+    def test_consolidated_input_routes(self):
+        with patch.object(server,'run',return_value={'ok':True}) as driver, patch.object(server,'observe',return_value=([],[])):
+            for arguments, expected in [
+                ({'action':'text','text':'中文😀'},('text','中文😀')),
+                ({'action':'text','text':'Hello','mode':'ascii','replace':True},('type','Hello','replace')),
+                ({'action':'enter'},('key','return')),
+            ]:
+                server.call('mirror_input',arguments)
+                driver.assert_called_with(*expected)
+
+    def test_input_rejects_ambiguous_enter(self):
+        with patch.object(server,'run') as driver:
+            for arguments in ({'action':'text'},{'action':'enter','text':'hello'},{'action':'enter','replace':True}):
+                self.assertTrue(self.request('tools/call',{'name':'mirror_input','arguments':arguments})['result']['isError'])
+            driver.assert_not_called()
+
+    def test_scroll_direction_routes(self):
+        with patch.object(server,'run',return_value={'ok':True}) as driver, patch.object(server,'observe',return_value=([],[])):
+            for direction, expected in [('up',('scroll',50)),('down',('scroll',-50)),('left',('scroll',50,'horizontal')),('right',('scroll',-50,'horizontal'))]:
+                server.call('mirror_scroll',{'direction':direction})
+                driver.assert_called_with(*expected)
+            for arguments in ({},{'dy':50,'direction':'left'}):
+                with self.assertRaises(ValueError):
+                    server.call('mirror_scroll',arguments)
+
     def test_ambiguous_text_does_not_click(self):
         rows=[{'text':'Settings','x':.2,'y':.3},{'text':'Settings','x':.7,'y':.3}]
         with patch.object(server,'observe',return_value=([],rows)), patch.object(server,'run') as driver:
@@ -86,7 +117,7 @@ class ProtocolTests(unittest.TestCase):
             try:
                 self.assertEqual(holder.stdout.readline().strip(),'locked')
                 with patch.object(server,'run') as driver:
-                    result=self.request('tools/call',{'name':'mirror_home','arguments':{}})
+                    result=self.request('tools/call',{'name':'mirror_navigate','arguments':{'destination':'home'}})
                     self.assertIn('Device busy',result['result']['content'][0]['text'])
                     driver.assert_not_called()
             finally:
@@ -99,7 +130,7 @@ class ProtocolTests(unittest.TestCase):
 
     def test_control_characters_never_reach_driver(self):
         with patch.object(server,'run') as driver:
-            result=self.request('tools/call',{'name':'mirror_type','arguments':{'text':'hello\n'}})
+            result=self.request('tools/call',{'name':'mirror_input','arguments':{'action':'text','text':'hello\n'}})
             self.assertTrue(result['result']['isError'])
             driver.assert_not_called()
 
@@ -116,7 +147,7 @@ class ProtocolTests(unittest.TestCase):
     def test_observation_failure_preserves_submitted_action(self):
         submitted={'ok':True,'submission':'submitted','phone_effect_verified':False}
         with patch.object(server,'run',return_value=submitted) as driver, patch.object(server,'observe',side_effect=RuntimeError('capture unavailable')):
-            reply=self.request('tools/call',{'name':'mirror_home','arguments':{}})['result']
+            reply=self.request('tools/call',{'name':'mirror_navigate','arguments':{'destination':'home'}})['result']
         self.assertFalse(reply['isError'])
         self.assertEqual(json.loads(reply['content'][0]['text']),submitted)
         self.assertFalse(json.loads(reply['content'][1]['text'])['retry_action'])
@@ -179,6 +210,21 @@ class ScrollDriverTests(unittest.TestCase):
                 driver['prime'].assert_not_called()
                 driver['record'].assert_not_called()
                 driver['post_wheel_records'].assert_not_called()
+
+    def test_horizontal_scroll_selects_modifier_route_without_priming(self):
+        driver = self.driver_main()
+        driver['main'](['scroll','50','horizontal'])
+        self.assertTrue(driver['post_wheel_records'].call_args.kwargs['horizontal'])
+        driver['prime'].assert_not_called()
+        driver['record'].assert_not_called()
+
+    def test_horizontal_builder_keeps_two_records(self):
+        namespace = {'WHEEL_RECORD_COUNT':2, 'wheel_record':Mock()}
+        self.functions({'build_plain_wheel'},namespace)
+        events = namespace['build_plain_wheel']('source',50,(1,2),True)
+        self.assertEqual(len(events),2)
+        self.assertEqual(namespace['wheel_record'].call_count,2)
+        namespace['wheel_record'].assert_called_with('source',50,(1,2),True)
 
     def test_scroll_is_disabled_without_explicit_opt_in(self):
         driver = self.driver_main(enabled=False)

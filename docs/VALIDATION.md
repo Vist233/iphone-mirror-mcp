@@ -24,9 +24,9 @@ Raw experiment files and OCR landmarks contain personal data and are not part of
 
 ## Current revision checks
 
-The offline suite has 22 tests. In addition to protocol and transaction checks, it executes the real driver functions with isolated backends to check that a1 does not prime/deactivate the mirror, rejects unmeasured magnitudes and unpublished schemes before input, requires explicit opt-in, posts two records, and stops before posting on focus/coverage changes. These are not phone-effect tests.
+The offline suite has 28 tests. In addition to protocol and transaction checks, it executes the real driver functions with isolated backends to check that a1 does not prime/deactivate the mirror, rejects unmeasured magnitudes and unpublished schemes before input, requires explicit opt-in, posts two records, and stops before posting on focus/coverage changes. It checks consolidated navigation/input routing, explicit Enter validation, four-direction routing, and horizontal record construction. These are not phone-effect tests.
 
-A fresh MCP scroll regression and exact-source hashes are recorded privately by the maintainer before publication. Only observed results from that regression should be reported as current-revision device checks.
+On 2026-10-26 the maintainer confirmed existing vertical scrolling and requested no more a1 tests. The vertical event path is preserved. Left/right Shift+wheel and App Switcher Command+2 are implemented from Apple's documented controls; their background injection remains device-unverified. The input consolidation forwards to the existing text/key paths. No new device success is claimed for this revision.
 
 ## Remaining gates
 

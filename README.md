@@ -59,12 +59,13 @@ For Pi, put the configuration in the project's `.pi/mcp.json` and inspect `pi mc
 | `mirror_observe` | Optional `image: true`; text OCR is the default |
 | `mirror_tap` | Normalized `x`, `y`, each in `[0,1)` |
 | `mirror_tap_text` | `text`; must match exactly one OCR item by substring |
-| `mirror_home` | None |
-| `mirror_spotlight` | None |
-| `mirror_type_ascii` | `text`, optional `replace`; physical English-layout keys |
-| `mirror_type` | Unicode `text`, optional `replace` |
-| `mirror_key` | `key`: `return` or `enter` |
-| `mirror_scroll` | `dy`: exactly `-50` or `50`; one bounded measured step |
+| `mirror_navigate` | `destination`: `home`, `spotlight`, or `app_switcher` (recent apps) |
+| `mirror_input` | `action: text` with `text`, optional `mode: unicode` (default) or `ascii`, optional `replace`; or `action: enter` alone |
+| `mirror_scroll` | Exactly one of `direction: up/down/left/right` or legacy `dy: -50/50` |
+
+Version 0.3.0 consolidates the five old navigation/input tools into `mirror_navigate` and `mirror_input`. Clients must refresh their tool list and update old calls. Text input never implicitly submits. Submitting requires a separate `mirror_input({"action":"enter"})` call.
+
+`direction` describes content movement: `up` is `dy: 50`, `down` is `dy: -50`. Left/right use the same records with the Shift modifier flag, without pressing a global Shift key. [Apple documents Shift+scroll for horizontal swipes and Command+2 for App Switcher](https://support.apple.com/en-us/120421). Their background injection is implemented but has not passed device acceptance; verify the returned screen and direction.
 
 On the tested `a1` setup, positive `dy` moves content upward to reveal later items; negative moves content downward to reveal earlier items. The argument is a tested preset, not a guaranteed pixel distance or one full screen. Small steps may be needed to inspect a long list.
 

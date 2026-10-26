@@ -2,7 +2,7 @@
 
 Control a paired iPhone through Apple's iPhone Mirroring from an MCP client. The driver runs on the Mac. No model API or Codex dependency is required.
 
-**This is a preview with limited device validation. Background scrolling has not passed validation and is disabled by default.** Several tested actions preserved the sampled Mac foreground, keyboard focus and cursor position. This does not guarantee uninterrupted desktop use on every OS, application or task.
+**This is a preview with limited device validation. Background scrolling has produced repeatable sequence-level movement in a local research probe, but remains intermittent and is disabled by default in the MCP driver.** Several tested actions preserved the sampled Mac foreground, keyboard focus and cursor position. This does not guarantee uninterrupted desktop use on every OS, application or task.
 
 ## Status
 
@@ -13,13 +13,13 @@ Control a paired iPhone through Apple's iPhone Mirroring from an MCP client. The
 | English, digits, Chinese, emoji and text replacement | Tested; emoji checked in screenshots |
 | Return for browser navigation | Tested on a public example page |
 | Pi + configured DeepSeek Flash provider | Real MCP calls and text readback tested |
-| Background scroll | Not validated; disabled |
+| Background scroll | Research probe produced movement in two sequences; intermittent, not integrated as a supported MCP route; disabled by default |
 | Long press, drag, multi-touch, arbitrary apps | Not supported as verified features |
 | Other Macs and long unattended workflows | Not validated |
 
 Device evidence was collected on 2026-10-24 with macOS 27.0.1 and iPhone Mirroring 2.0. Protocol tests can run without a phone. See [validation](docs/VALIDATION.md) for the distinction.
 
-On 2026-10-26, this prepared preview also passed a core device regression: Settings navigation, three text replacements, Home/Spotlight, disconnect refusal and submission reporting after an injected observation failure. This does not validate background scrolling or other Macs.
+On 2026-10-26, this prepared preview also passed a core device regression: Settings navigation, three text replacements, Home/Spotlight, disconnect refusal and submission reporting after an injected observation failure. This does not validate scrolling stability or other Macs. Later that day, a separate scroll probe produced persistent list displacement in 5 of 27 controlled actions, including 2 with unchanged focus and cursor samples. Identical parameters also failed. See [scroll research](docs/SCROLL_RESEARCH.md).
 
 ## Setup
 
@@ -84,7 +84,7 @@ SkyLight entry points and event layouts are private interfaces. They can change 
 
 A per-user file lock serializes transactions between copies of this server. It does not coordinate other drivers, the user, or direct CLI calls. No phone-side helper, developer mode, jailbreak or system protection changes were used for the recorded device tests.
 
-`MIRROR_ENABLE_EXPERIMENTAL_INPUT=1` enables research routes in the driver. These routes are unverified and are not part of the preview's usable capability claim. They never automatically fall back to foreground input.
+`MIRROR_ENABLE_EXPERIMENTAL_INPUT=1` enables research routes in the driver. These routes are unverified and are not part of the preview's usable capability claim. In particular, this flag does not select the newly successful `SLSPostEventRecord` research probe: that probe has not replaced the packaged MCP scroll driver. They never automatically fall back to foreground input.
 
 ## Test and contribute
 

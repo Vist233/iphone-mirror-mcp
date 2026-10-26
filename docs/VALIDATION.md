@@ -6,7 +6,7 @@ On 2026-10-24, one Mac/iPhone setup completed capture, OCR, taps, Home/Spotlight
 
 For selected successful inputs, every focus/cursor sample was unchanged: 43 samples for direct MCP English input, 41 for model-driven English input, 27 for model-driven Chinese input, and 18 for opening Chrome. Sampling ran at about 25ms intervals. Other trials contained focus or pointer changes and were not counted as passing noninterference.
 
-Sixteen scroll trials covered phases, coordinates, source identity, complete records, drag, directions, desktop placement, serialization replay, raw deltas and mouse-target routing. No repeatable background scroll passed. One small movement did not reproduce. Scroll remains disabled.
+Sixteen scroll trials covered phases, coordinates, source identity, complete records, drag, directions, desktop placement, serialization replay, raw deltas and mouse-target routing. In that initial round, no repeatable background scroll passed. One small movement did not reproduce. Later results are recorded below; default MCP scrolling remains disabled.
 
 Those are the initial device results. On 2026-10-26, the prepared preview completed another device regression: Settings navigation, OCR targeting, three exact text replacements, Home and Spotlight. English input had 42 unchanged focus/cursor samples, Chinese plus emoji 28, and mixed-case digits 25. Emoji were checked in an image. Pointing trials with cursor changes were kept separate.
 
@@ -39,9 +39,13 @@ The current suite has 14 tests. They test protocol behavior and selected boundar
 
 ## Scroll research: separate acceptance gate
 
-GUIWeave's public `mirror_daemon` binary uses a different raw-record posting route, `SLSPostEventRecord`. The downloaded binary was not run. On 2026-10-26, a separate bounded probe explicitly supplied the locally observed fourth argument and tested eight combinations of directions, frame counts, internal activation, posting options and Cocoa initialization. The user reported seeing the iPhone Settings list scroll upward, but captured landmarks did not establish repeatable persistent displacement. Neither complete failure nor supported scrolling has been demonstrated. Production scrolling remains disabled.
+GUIWeave's public `mirror_daemon` binary uses `SLSPostEventRecord`. The downloaded binary was not run. A separate local probe explicitly supplied the fourth argument observed in the local system implementation.
 
-Keep this research separate from the preview's verified input paths. If the route works, require repeated up/down page movement with stable Mac focus and pointer before exposing it as supported MCP scrolling. Then run the same action through Pi and inspect the phone result. Do not distribute the downloaded candidate binary as part of this preview.
+An initial eight-case round had a human report of upward Settings movement without measured persistent displacement. A later 21-case comparison, plus six retests, established persistent displacement in five actions. The user confirmed success twice. Two of those actions also preserved every sampled Mac foreground, keyboard-focus and cursor value. These findings supersede the earlier absence of measured displacement; they do not establish reliable scrolling.
+
+The successful route used two pixel-wheel records of +50 or -50, with global coordinates written into the raw record, posted through the main WindowServer connection. In the first sequence, all three actions moved the list; replaying the sequence moved it in the two negative-direction actions. Three standalone positive-direction retests did not move it. Priming and non-priming variants both succeeded. No synchronous capture ran inside the posting loop.
+
+See [the detailed research summary](SCROLL_RESEARCH.md) for all variants, recording gaps and acceptance gates. The successful probe is separate from the packaged MCP driver. The existing experimental-input flag does not switch to this new route. Default MCP scrolling remains disabled. Require controlled, repeated movement in both directions and separate focus/pointer checks before integrating it. Then verify an actual Pi/model call. No research binary or private captures are distributed.
 
 ## Release wording
 
